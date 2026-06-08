@@ -36,9 +36,50 @@ In two sentences: this component is part of SZL's governed-AI mesh — it enforc
 <details>
 <summary><strong>📐 Full technical detail, math, and proofs (the proof, not the pitch)</strong></summary>
 
-# szl-doctrine
-SZL doctrine + org-wide governance workflows (secret health, etc.)
+# szl-doctrine — the org's governance contract + automation
 
+`szl-doctrine` is the **single source of truth** for the version every SZL repository builds
+against, plus the org-wide automation that keeps each repo honest. It is deliberately small,
+auditable, and machine-enforced.
+
+## What it pins
+
+| Constant | Value | Why it is frozen |
+|---|---|---|
+| Doctrine version | **v11 LOCKED** | the published security/compliance contract |
+| Locked kernel commit | [`c7c0ba17`](https://github.com/szl-holdings/lutar-lean/commit/c7c0ba17) | the exact Lean 4 kernel state the locked numbers were measured against |
+| Locked numbers | **749 declarations / 14 unique axioms / 163 sorries** | a frozen contract — never edited to track live corpus drift |
+| Λ status | **Conjecture 1 (NOT a theorem)** | unconditional uniqueness is machine-checked *false*; only conditional uniqueness is proven |
+| Section 889 | exactly **5** banned vendors (Huawei, ZTE, Hytera, Hikvision, Dahua) | no inflation, no omission |
+| Supply chain | **SLSA L1 honest**; L2 verified-provenance on roadmap | L3 / FedRAMP / Iron Bank / CMMC are **never** claimed |
+
+> The *locked* numbers are a contract and do not move. The **experimental `main` corpus**
+> (≈1323 decls / 23 axioms / CI-green) is reported **separately** and is **never folded into
+> the 5 locked-proven formulas** {F1, F11, F12, F18, F19}.
+
+## What it automates (org-wide)
+
+- **Secret-health workflow** (`.github/workflows/secret-health.yml`) — scheduled checks that no
+  repo has leaked or expired credentials; fails loud rather than silently.
+- **Governance / doctrine-drift checks** — verify that every product repo cites the *same*
+  locked version, kernel commit, and honest SLSA posture, so no repository can quietly diverge
+  from the published contract.
+- **DCO enforcement** — every commit carries `Signed-off-by:` per the Developer Certificate
+  of Origin.
+
+## How a downstream repo consumes it
+
+Product repos reference the locked constants in their README footers and `/healthz` payloads.
+When the doctrine is re-locked at a new version, the constants are bumped **here first**, then
+propagated; nothing downstream invents its own numbers.
+
+## Honesty boundary
+
+- Λ uniqueness is **Conjecture 1** — the unconditional claim is *false* by machine-checked
+  counterexample; only the conditional CUT-2 slice-multiplicativity uniqueness
+  (`lambda_unique_of_separable`, axiom-free, 0 sorry) is proven.
+- Proved PURIQ formulas = **exactly 5**; the rest are roadmap.
+- **No fabricated metrics, no inflated proof counts, no L2/L3/FedRAMP/Iron Bank/CMMC claims.**
 
 </details>
 
