@@ -78,7 +78,7 @@ propagated; nothing downstream invents its own numbers.
 - Λ uniqueness is **Conjecture 1** — the unconditional claim is *false* by machine-checked
   counterexample; only the conditional CUT-2 slice-multiplicativity uniqueness
   (`lambda_unique_of_separable`, axiom-free, 0 sorry) is proven.
-- Proved PURIQ formulas = **exactly 5**; the rest are roadmap.
+- Locked-proven PURIQ formulas = **exactly 8** {F1, F4, F7, F11, F12, F18, F19, F22}; the rest are roadmap.
 - **No fabricated metrics, no inflated proof counts, no L2/L3/FedRAMP/Iron Bank/CMMC claims.**
 
 </details>
