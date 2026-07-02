@@ -14,7 +14,7 @@ run AI workloads under explicit policy and emit tamper-evident, independently
 verifiable receipts for every action. The flagship surface is **a11oy**, the
 Command Center that operators actually look at; everything else is a governed
 organ that plugs into it. Names below are Quechua/Andean codenames (khipu, amaru,
-yarqa, killinchu, hatun, puriq, willay) chosen for the project's "knotted-cord
+yarqa, killinchu, hatun, puriq) chosen for the project's "knotted-cord
 record-keeping" metaphor — the glossary maps each back to its plain role so a
 stranger isn't lost.
 

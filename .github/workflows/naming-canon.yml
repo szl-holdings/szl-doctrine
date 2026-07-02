@@ -1,0 +1,47 @@
+name: NAMING_CANON registry guard
+
+# Internal-consistency guard for NAMING_CANON.md (the canonical codename->repo
+# glossary). Runs a stdlib-only Python check: every registry row is complete,
+# no codename is defined twice, repo cells are well-formed slugs, and every
+# codename the prose declares resolves to a glossary row. It validates INTERNAL
+# doc consistency only — NOT whether a repo exists on GitHub (that needs a
+# token/network this job intentionally does not have). No third-party deps.
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - 'NAMING_CANON.md'
+      - 'README.md'
+      - 'scripts/check_naming_canon.py'
+      - '.github/workflows/naming-canon.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'NAMING_CANON.md'
+      - 'README.md'
+      - 'scripts/check_naming_canon.py'
+      - '.github/workflows/naming-canon.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  naming-canon:
+    name: NAMING_CANON internal consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Guard self-test (positive + negative fixtures)
+        run: python3 scripts/check_naming_canon.py --self-test
+
+      - name: Guard on the real NAMING_CANON.md
+        run: python3 scripts/check_naming_canon.py
