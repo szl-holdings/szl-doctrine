@@ -56,4 +56,4 @@ stranger isn't lost.
 
 ---
 
-<sub>Canonical one-liner: **"Governed AI you can prove — every decision comes with a signed, verifiable receipt, built on public data, running on your own hardware."** · Λ Conjecture 1 (advisory) · doctrine v11 LOCKED · [SZL Holdings](https://a11oy.net) · Apache-2.0</sub>
+<sub>Canonical one-liner: **"Governed AI you can prove — every decision comes with a signed, verifiable receipt, built on public data, running on your own hardware."** · Λ Conjecture 1 (advisory) · doctrine v11 LOCKED · [SZL Holdings](https://a-11-oy.com) · Apache-2.0</sub>
