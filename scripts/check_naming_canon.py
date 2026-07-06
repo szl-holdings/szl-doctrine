@@ -9,7 +9,10 @@ truth). This stdlib-only guard enforces the INTERNAL integrity of that registry:
   3. each Repo cell is a well-formed repo slug / path (or the explicit "n/a"),
      accepting a multi-value cell like `khipu` / `khipu-consensus`;
   4. every codename the prose explicitly declares in a "codenames (...)" list
-     (in NAMING_CANON.md or README.md) resolves to a row in the glossary.
+     (in NAMING_CANON.md or README.md) resolves to a row in the glossary;
+  5. no live link targets the SUNSET domain a11oy.net (canonical: a-11-oy.com) —
+     a11oy.net is redirect-only and is allowed only in a line that explicitly
+     documents the sunset/redirect rule itself.
 
 Honesty boundary: this validates INTERNAL doc consistency only. It does NOT
 check whether a repo actually exists on GitHub — that would need a token and
@@ -28,6 +31,15 @@ import re
 import sys
 
 BACKTICK_RE = re.compile(r"`([^`]+)`")
+# Sunset domain: a11oy.net is retired (redirect-only). Canonical is a-11-oy.com.
+CANONICAL_DOMAIN = "a-11-oy.com"
+SUNSET_DOMAIN = "a11oy.net"
+# a11oy.net used as a live link target: markdown link "](...a11oy.net)" or a
+# bare "http(s)://...a11oy.net" URL. A plain-text mention (no scheme, not a link
+# target) does NOT match — that is where a sunset-definition sentence lives.
+SUNSET_LINK_RE = re.compile(r"(?:\]\(\s*|https?://)[^)\s]*a11oy\.net", re.IGNORECASE)
+# A line that explicitly documents the sunset/redirect rule itself.
+SUNSET_STATEMENT_RE = re.compile(r"sunset|redirect", re.IGNORECASE)
 # A codename list the prose explicitly declares, e.g. "... codenames (a, b, c)".
 CODENAME_LIST_RE = re.compile(r"codenames?\s*\(([^)]*)\)", re.IGNORECASE)
 # Well-formed repo slug or path segment(s): letters/digits/._- joined by "/".
@@ -98,6 +110,27 @@ def iter_registry_rows(md_text: str):
                         yield line_no, split_row(row_line)
             continue
         i += 1
+
+
+def check_domains(label: str, text: str, violations: list[str]) -> None:
+    """Forbid live links to the sunset domain a11oy.net.
+
+    a11oy.net is the SUNSET domain (redirect-only); the canonical domain is
+    a-11-oy.com. A bare/live link to a11oy.net is a violation. It is allowed
+    ONLY in a line that explicitly documents the sunset/redirect rule itself.
+    """
+    for i, line in enumerate(text.splitlines(), 1):
+        if SUNSET_DOMAIN not in line.lower():
+            continue
+        if not SUNSET_LINK_RE.search(line):
+            continue  # plain-text mention, not a live link target
+        if SUNSET_STATEMENT_RE.search(line):
+            continue  # explicit sunset/redirect canon statement
+        violations.append(
+            f"SUNSET_DOMAIN: {label}: line {i}: live link to sunset domain "
+            f"'{SUNSET_DOMAIN}' -> use canonical https://{CANONICAL_DOMAIN} "
+            f"(a11oy.net is allowed only in an explicit sunset/redirect statement)"
+        )
 
 
 def check_canon(canon_text: str, readme_text: str | None = None) -> list[str]:
@@ -175,6 +208,11 @@ def check_canon(canon_text: str, readme_text: str | None = None) -> list[str]:
                         f"'{candidate}' but it is absent from the glossary table"
                     )
 
+    # Rule 5: no live link to the sunset domain a11oy.net (canonical: a-11-oy.com).
+    check_domains("NAMING_CANON.md", canon_text, violations)
+    if readme_text:
+        check_domains("README.md", readme_text, violations)
+
     return violations
 
 
@@ -239,10 +277,12 @@ def self_test(root: str) -> int:
         "| **foo** | duplicate codename foo | `foo-two` |\n"
         "| **baz** |  | `baz` |\n"
         "| **qux** | role qux | not a slug!! |\n"
+        "\n"
+        "Footer with a live [SZL Holdings](https://a11oy.net) link.\n"
     )
     bad_violations = check_canon(bad_canon)
     tags = {v.split(":", 1)[0] for v in bad_violations}
-    expected = {"DUPLICATE", "MISSING_COLUMN", "BAD_REPO", "UNDEFINED_CODENAME"}
+    expected = {"DUPLICATE", "MISSING_COLUMN", "BAD_REPO", "UNDEFINED_CODENAME", "SUNSET_DOMAIN"}
     missing = expected - tags
     if missing:
         ok = False
@@ -251,7 +291,24 @@ def self_test(root: str) -> int:
             print(f"  - {v}")
     else:
         print("SELF-TEST negative OK (missing column, duplicate codename, "
-              "malformed repo, undeclared codename all caught).")
+              "malformed repo, undeclared codename, sunset domain all caught).")
+
+    # NEGATIVE #2: an explicit sunset/redirect statement mentioning a11oy.net
+    # (even as a link) must be ALLOWED — it documents the canon rule itself.
+    sunset_ok = (
+        "# canon\n"
+        "\n"
+        "Domain canon: a11oy.net is the sunset domain and redirects to "
+        "https://a-11-oy.com — do not link it as live.\n"
+    )
+    sunset_violations = [v for v in check_canon(sunset_ok) if v.startswith("SUNSET_DOMAIN")]
+    if sunset_violations:
+        ok = False
+        print("SELF-TEST sunset-exception FAILED (sunset statement wrongly flagged):")
+        for v in sunset_violations:
+            print(f"  - {v}")
+    else:
+        print("SELF-TEST sunset-exception OK (explicit sunset/redirect statement allowed).")
 
     if ok:
         print("\nSELF-TEST: PASS")
