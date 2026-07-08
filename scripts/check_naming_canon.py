@@ -7,7 +7,10 @@ truth). This stdlib-only guard enforces the INTERNAL integrity of that registry:
   1. every registry row has all 3 columns non-empty;
   2. no codename is defined by more than one row (no duplicate codename);
   3. each Repo cell is a well-formed repo slug / path (or the explicit "n/a"),
-     accepting a multi-value cell like `khipu` / `khipu-consensus`;
+     accepting a multi-value cell like `khipu` / `khipu-consensus`, and
+     rejecting a path-traversal segment (a bare "." or ".." component) so a
+     slug like `../../etc` is caught even though its characters are otherwise
+     legal (a real `.github/doctrine`-style path stays valid);
   4. every codename the prose explicitly declares in a "codenames (...)" list
      (in NAMING_CANON.md or README.md) resolves to a row in the glossary;
   5. no live link targets the SUNSET domain a11oy.net (canonical: a-11-oy.com) —
@@ -184,6 +187,15 @@ def check_canon(canon_text: str, readme_text: str | None = None) -> list[str]:
                             f"BAD_REPO: line {line_no}: malformed repo slug "
                             f"'{tok}' -> {repo_cell!r}"
                         )
+                    elif any(seg in {".", ".."} for seg in tok.split("/")):
+                        # Characters are legal per REPO_SLUG_RE, but a bare
+                        # "." / ".." component is a path-traversal slug, not a
+                        # real repo path. `.github/doctrine` stays valid because
+                        # ".github" is a full segment, not a "." component.
+                        violations.append(
+                            f"BAD_REPO: line {line_no}: repo slug '{tok}' has a "
+                            f"path-traversal segment ('.' or '..') -> {repo_cell!r}"
+                        )
 
     if row_count == 0:
         violations.append("STRUCTURE: no registry table found in NAMING_CANON.md")
@@ -309,6 +321,78 @@ def self_test(root: str) -> int:
             print(f"  - {v}")
     else:
         print("SELF-TEST sunset-exception OK (explicit sunset/redirect statement allowed).")
+
+    # ADVERSARIAL MATRIX: each case pins a specific doctrine-rule path that the
+    # broad fixtures above do not isolate, so a regression in any single branch
+    # is caught. Negative cases assert the expected violation TAG fires; positive
+    # cases assert the input is accepted clean (so a tightened rule cannot start
+    # rejecting a legitimate row).
+    def tags_of(text: str) -> set[str]:
+        return {v.split(":", 1)[0] for v in check_canon(text)}
+
+    HDR = "| Codename | Plain-English role | Repo |\n|---|---|---|\n"
+    matrix_negative = [
+        # No registry table at all -> STRUCTURE.
+        ("no-registry-table", "# canon\n\nJust prose, no glossary table.\n", "STRUCTURE"),
+        # A data row with the wrong number of columns -> MISSING_COLUMN.
+        ("wrong-column-count", HDR + "| **foo** | role | `foo` | oops |\n", "MISSING_COLUMN"),
+        # A backtick token that is not a legal slug (embedded space) -> BAD_REPO.
+        ("malformed-backtick-slug", HDR + "| **foo** | role | `bad slug` |\n", "BAD_REPO"),
+        # Duplicate that differs only by case -> DUPLICATE (keys are lowered).
+        ("case-insensitive-duplicate",
+         HDR + "| **Foo** | role | `foo` |\n| **foo** | role2 | `foo-two` |\n", "DUPLICATE"),
+        # A codename first declared inside a multi-value cell, re-declared later.
+        ("multi-value-duplicate",
+         HDR + "| **a** / **b** | role | `a` / `b` |\n| **b** | role2 | `b-two` |\n", "DUPLICATE"),
+        # Prose declares a codename that no glossary row defines -> UNDEFINED_CODENAME.
+        ("undefined-prose-codename",
+         "Intro codenames (ghost).\n\n" + HDR + "| **foo** | role | `foo` |\n", "UNDEFINED_CODENAME"),
+        # A slug whose characters are legal but which is a path-traversal -> BAD_REPO.
+        ("path-traversal-slug", HDR + "| **foo** | role | `../../etc` |\n", "BAD_REPO"),
+    ]
+    for name, text, want in matrix_negative:
+        got = tags_of(text)
+        if want not in got:
+            ok = False
+            print(f"SELF-TEST matrix negative '{name}' FAILED — expected {want}, got {sorted(got)}")
+
+    # The traversal case must be reported *specifically* (not merely as some
+    # other BAD_REPO), proving the dedicated ./.. component branch fired.
+    trav = HDR + "| **foo** | role | `../../etc` |\n"
+    if not any("path-traversal" in v for v in check_canon(trav)):
+        ok = False
+        print("SELF-TEST matrix negative 'path-traversal-slug' FAILED — traversal not specifically reported")
+
+    matrix_positive = [
+        # An explicit "n/a" repo cell is a legitimate, complete row.
+        ("n-a-repo-cell", HDR + "| **foo** | role foo | `foo` |\n| **bar** | role bar | n/a |\n"),
+        # A "Term" table + multi-value row + a prose codename that resolves via a
+        # prefix alias (hatun -> hatun-mcp) must all pass clean.
+        ("term-header-and-prefix-alias",
+         "Intro codenames (hatun, khipu).\n\n"
+         "| Term | Plain-English role | Repo |\n|---|---|---|\n"
+         "| **khipu** / **khipu-consensus** | consensus | `khipu` / `khipu-consensus` |\n"
+         "| **hatun-mcp** | mcp | `hatun-mcp` |\n"),
+        # A plain-text (non-link) mention of the sunset domain is allowed.
+        ("plaintext-sunset-mention", HDR + "| **foo** | historically at a11oy.net | `foo` |\n"),
+        # A live a11oy.net link ON a line that documents the redirect rule is allowed.
+        ("sunset-live-link-exception",
+         HDR + "| **foo** | see [old](https://a11oy.net) redirect note | `foo` |\n"),
+        # A real dotted path segment (.github/doctrine) is NOT path-traversal.
+        ("dot-github-path-slug", HDR + "| **foo** | role | `.github/doctrine` |\n"),
+    ]
+    for name, text in matrix_positive:
+        v = check_canon(text)
+        if v:
+            ok = False
+            print(f"SELF-TEST matrix positive '{name}' FAILED — expected clean, got:")
+            for x in v:
+                print(f"  - {x}")
+
+    print("SELF-TEST matrix OK (structure, column-count, malformed + traversal "
+          "slug, case/multi-value duplicate, undefined prose codename; and n/a, "
+          "Term table, prefix alias, sunset mention/exception, .github path all "
+          "handled)." if ok else "SELF-TEST matrix: see failures above.")
 
     if ok:
         print("\nSELF-TEST: PASS")
