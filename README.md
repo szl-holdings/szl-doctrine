@@ -17,7 +17,7 @@ It locks the doctrine version every product builds against and runs the org-wide
 
 ## ▶️ Live demo
 
-_Internal / private repository — no public demo surface. See [docs.szlholdings.com](https://szl-holdings.github.io/docs-site) for the public product walkthrough._
+_This is a **public** governance & automation repository — it has no product demo surface of its own. See [docs.szlholdings.com](https://szl-holdings.github.io/docs-site) for the public product walkthrough._
 
 ## ⚡ Quick start (30 seconds)
 
