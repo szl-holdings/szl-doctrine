@@ -1,72 +1,59 @@
-# Governed Secrets Runbook — `secret-health`
+# Governed Secrets Runbook
 
-The organization-wide `secret-health` workflow audits whether the exact required
-GitHub Actions secret **names** are available to each governed repository. It does
-not request, receive, print, hash, measure, or persist secret values.
+The organization-wide GitHub Actions secret-name audit is owned by the
+`szl-holdings/.github` control plane.
 
-## Authentication order
+Canonical source paths:
 
-The workflow no longer consumes the expired `SECRET_HEALTH_TOKEN` PAT.
+- `.github/workflows/secret-health.yml`
+- `.github/data/required_actions_secrets.json`
+- `.github/scripts/secret_health.py`
+- `.github/scripts/test_secret_health.py`
 
-1. **Preferred:** a short-lived qillqaq GitHub App installation token requesting
-   only repository metadata, repository secret-name read, and organization
-   secret-name read.
-2. **Governed fallback:** the existing organization `SZL_GITHUB_TOKEN`, used only
-   when qillqaq cannot mint the requested least-privilege token.
-3. **Fail closed:** if neither machine identity is available or an endpoint cannot
-   be enumerated authoritatively, the result is `UNAVAILABLE` rather than
-   `MISSING` or a fabricated green state.
+The former `szl-doctrine/.github/workflows/secret-health.yml` lane is retired. It
+depended on a long-lived `SECRET_HEALTH_TOKEN` PAT that expired and must not be
+restored.
 
-The receipt records only the selected source label (`qillqaq-app`,
-`governed-fallback`, or `UNAVAILABLE`). It never records token content, prefix,
-length, digest, expiration, or other token metadata.
+## Authentication contract
 
-## Versioned policy
+The central control tries a short-lived qillqaq GitHub App installation token
+first, requesting only repository and organization `Secrets: read`. Until that
+installation permission upgrade is approved, it uses the existing governed
+`SZL_GITHUB_TOKEN` from the organization control-plane repository.
 
-Required names are defined in:
+The fallback was exercised successfully on July 27, 2026. It reported all four
+current required names present and zero unavailable or missing requirements.
 
-`.github/data/required_actions_secrets.json`
+## Evidence boundary
 
-The current policy checks:
+GitHub's listing endpoints return secret names and timestamps, not encrypted
+values. The control records only:
 
-| Repository | Required name |
-|---|---|
-| `killinchu` | `HF_WRITE_TOKEN` |
-| `a11oy` | `HF_TOKEN` |
-| `szl-lake` | `HF_TOKEN` |
-| `.github` | `HF_TOKEN` |
+- repository;
+- required secret name;
+- `PRESENT`, `MISSING`, or `UNAVAILABLE` state;
+- the machine-identity source label.
 
-A name is `PRESENT` when it is configured directly on the repository or supplied
-through an organization secret available to that repository. `MISSING` means the
-listing succeeded and the required name was absent. Authentication, permission,
-network, pagination, or response-shape failures are `UNAVAILABLE`.
+It never requests, receives, prints, hashes, measures, or stores a secret value,
+token value, token prefix, token length, token digest, expiration, or other token
+metadata.
 
-## Evidence and enforcement
+## Fail-closed semantics
 
-Every run:
+- `PRESENT`: authoritative listing succeeded and the name exists directly or via
+  an organization secret available to the repository.
+- `MISSING`: authoritative listing succeeded and the required name is absent.
+- `UNAVAILABLE`: no governed machine identity exists or the API could not be read
+  authoritatively.
 
-- compiles and executes the network-free auditor regression suite;
-- attempts the App-first identity and governed fallback in that order;
-- uploads a 90-day JSON receipt;
-- fails for any `MISSING` or `UNAVAILABLE` requirement;
-- writes no repository, secret, issue, ruleset, deployment, or external-service
-  state.
+Authorization or network failure is never relabeled as a missing secret and never
+produces a fabricated green state.
 
-The workflow runs daily at 06:30 UTC, on manual dispatch, and immediately after a
-protected-main change to its policy, implementation, tests, or workflow.
+## Operator rules
 
-## qillqaq permission upgrade
-
-qillqaq currently may not have the repository and organization secret-name read
-permissions requested by the workflow. Granting those permissions to the App and
-approving the installation update will move the audit from `governed-fallback` to
-`qillqaq-app` without another source change. Until then, the explicit fallback is
-the governed path; no replacement PAT should be created.
-
-## Safety boundary
-
-- Never commit a token or private key.
-- Never print or serialize a token for diagnostics.
-- Never infer that a secret is missing when the API could not be read.
-- Rotate a credential through the owning provider if there is evidence its value
-  was exposed; this workflow proves presence of names, not credential validity.
+- Do not create another long-lived replacement PAT for this audit.
+- Do not restore the retired Doctrine workflow.
+- Approve qillqaq's read-only Secrets permission upgrade when organizationally
+  appropriate; no source change is required afterward.
+- Rotate a credential through its owning provider only when there is evidence its
+  value was exposed. Name presence does not prove credential validity.
