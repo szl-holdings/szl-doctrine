@@ -1,56 +1,72 @@
-# Founder Secrets Runbook — `secret-health` workflow
+# Governed Secrets Runbook — `secret-health`
 
-This runbook explains the **one founder action** required to make the org-wide
-`secret-health` check (`.github/workflows/secret-health.yml`) go green.
+The organization-wide `secret-health` workflow audits whether the exact required
+GitHub Actions secret **names** are available to each governed repository. It does
+not request, receive, print, hash, measure, or persist secret values.
 
-## What `secret-health` does
-- Runs daily (06:30 UTC) + on manual dispatch.
-- For every **active (non-archived)** `szl-holdings` repo, it checks whether the
-  repo has the **required Actions secrets** defined by the in-workflow
-  `REQUIRED` policy.
-- It reports secret **NAMES** and **PRESENT / MISSING** status only. It **never**
-  prints secret values — the GitHub API does not return secret values, and the
-  job is designed so a leak is structurally impossible here.
-- Honesty over checklist: a missing required secret (or a missing audit token)
-  is surfaced as a **failed check**, never a silent green.
+## Authentication order
 
-## Why it is currently RED (root cause + status)
-1. **Workflow parse bug (FIXED).** The guard step previously used
-   `if: ${{ secrets.SECRET_HEALTH_TOKEN == '' }}`. `secrets.*` is **not** a valid
-   named-value in a step-level `if:` expression, so GitHub Actions rejected the
-   workflow with `Unrecognized named-value: 'secrets'` and the whole run failed
-   to parse (no steps ran). This has been fixed by mapping the secret into `env`
-   and testing it in the step's shell. The gate behavior is unchanged.
-2. **Missing audit token (FOUNDER ACTION — open).** After the parse fix, the
-   workflow runs correctly and now fails *honestly* at the guard step because the
-   org secret **`SECRET_HEALTH_TOKEN` is not provisioned**. The audit cannot read
-   per-repo Actions secrets without it.
+The workflow no longer consumes the expired `SECRET_HEALTH_TOKEN` PAT.
 
-## Founder action to make it green
-Create an **organization-level Actions secret** named `SECRET_HEALTH_TOKEN`.
+1. **Preferred:** a short-lived qillqaq GitHub App installation token requesting
+   only repository metadata, repository secret-name read, and organization
+   secret-name read.
+2. **Governed fallback:** the existing organization `SZL_GITHUB_TOKEN`, used only
+   when qillqaq cannot mint the requested least-privilege token.
+3. **Fail closed:** if neither machine identity is available or an endpoint cannot
+   be enumerated authoritatively, the result is `UNAVAILABLE` rather than
+   `MISSING` or a fabricated green state.
 
-### Token requirements (fine-grained PAT or GitHub App installation token)
-- Resource owner: **szl-holdings** organization, all repositories (or all active repos).
-- Repository permissions:
-  - **Secrets: Read**
-  - **Administration: Read** (needed to list per-repo secrets)
-  - **Metadata: Read** (implicit)
+The receipt records only the selected source label (`qillqaq-app`,
+`governed-fallback`, or `UNAVAILABLE`). It never records token content, prefix,
+length, digest, expiration, or other token metadata.
 
-### Steps
-1. Create a fine-grained PAT (GitHub → Settings → Developer settings →
-   Fine-grained tokens) scoped to `szl-holdings` with the permissions above,
-   **or** install a GitHub App with equivalent permissions and use its token.
-2. Org → Settings → Secrets and variables → Actions → **New organization secret**.
-3. Name: `SECRET_HEALTH_TOKEN`. Value: the token from step 1.
-4. Repository access: **All repositories** (or the active set).
-5. Re-run the `secret-health` workflow (Actions → secret-health → Run workflow).
+## Versioned policy
 
-Once provisioned, the guard passes and the audit step runs, producing a
-PRESENT/MISSING table per repo. If that table then shows any **MISSING** required
-secret, those are *real* gaps to remediate (add the named secret to that repo) —
-again a founder action, never auto-fabricated.
+Required names are defined in:
 
-## Notes
-- Never commit any token/private key to the repo. The PAT lives only as an org secret.
-- This workflow is a **presence audit**, not a secret scanner; it is unrelated to
-  gitleaks/`gitleaks.yml`, which scans committed content for leaked values.
+`.github/data/required_actions_secrets.json`
+
+The current policy checks:
+
+| Repository | Required name |
+|---|---|
+| `killinchu` | `HF_WRITE_TOKEN` |
+| `a11oy` | `HF_TOKEN` |
+| `szl-lake` | `HF_TOKEN` |
+| `.github` | `HF_TOKEN` |
+
+A name is `PRESENT` when it is configured directly on the repository or supplied
+through an organization secret available to that repository. `MISSING` means the
+listing succeeded and the required name was absent. Authentication, permission,
+network, pagination, or response-shape failures are `UNAVAILABLE`.
+
+## Evidence and enforcement
+
+Every run:
+
+- compiles and executes the network-free auditor regression suite;
+- attempts the App-first identity and governed fallback in that order;
+- uploads a 90-day JSON receipt;
+- fails for any `MISSING` or `UNAVAILABLE` requirement;
+- writes no repository, secret, issue, ruleset, deployment, or external-service
+  state.
+
+The workflow runs daily at 06:30 UTC, on manual dispatch, and immediately after a
+protected-main change to its policy, implementation, tests, or workflow.
+
+## qillqaq permission upgrade
+
+qillqaq currently may not have the repository and organization secret-name read
+permissions requested by the workflow. Granting those permissions to the App and
+approving the installation update will move the audit from `governed-fallback` to
+`qillqaq-app` without another source change. Until then, the explicit fallback is
+the governed path; no replacement PAT should be created.
+
+## Safety boundary
+
+- Never commit a token or private key.
+- Never print or serialize a token for diagnostics.
+- Never infer that a secret is missing when the API could not be read.
+- Rotate a credential through the owning provider if there is evidence its value
+  was exposed; this workflow proves presence of names, not credential validity.
