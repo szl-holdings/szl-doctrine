@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +13,7 @@ MODULE_PATH = Path(__file__).with_name("secret_health.py")
 SPEC = importlib.util.spec_from_file_location("secret_health", MODULE_PATH)
 assert SPEC and SPEC.loader
 secret_health = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = secret_health
 SPEC.loader.exec_module(secret_health)
 
 
