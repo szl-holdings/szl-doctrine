@@ -1,56 +1,59 @@
-# Founder Secrets Runbook — `secret-health` workflow
+# Governed Secrets Runbook
 
-This runbook explains the **one founder action** required to make the org-wide
-`secret-health` check (`.github/workflows/secret-health.yml`) go green.
+The organization-wide GitHub Actions secret-name audit is owned by the
+`szl-holdings/.github` control plane.
 
-## What `secret-health` does
-- Runs daily (06:30 UTC) + on manual dispatch.
-- For every **active (non-archived)** `szl-holdings` repo, it checks whether the
-  repo has the **required Actions secrets** defined by the in-workflow
-  `REQUIRED` policy.
-- It reports secret **NAMES** and **PRESENT / MISSING** status only. It **never**
-  prints secret values — the GitHub API does not return secret values, and the
-  job is designed so a leak is structurally impossible here.
-- Honesty over checklist: a missing required secret (or a missing audit token)
-  is surfaced as a **failed check**, never a silent green.
+Canonical source paths:
 
-## Why it is currently RED (root cause + status)
-1. **Workflow parse bug (FIXED).** The guard step previously used
-   `if: ${{ secrets.SECRET_HEALTH_TOKEN == '' }}`. `secrets.*` is **not** a valid
-   named-value in a step-level `if:` expression, so GitHub Actions rejected the
-   workflow with `Unrecognized named-value: 'secrets'` and the whole run failed
-   to parse (no steps ran). This has been fixed by mapping the secret into `env`
-   and testing it in the step's shell. The gate behavior is unchanged.
-2. **Missing audit token (FOUNDER ACTION — open).** After the parse fix, the
-   workflow runs correctly and now fails *honestly* at the guard step because the
-   org secret **`SECRET_HEALTH_TOKEN` is not provisioned**. The audit cannot read
-   per-repo Actions secrets without it.
+- `.github/workflows/secret-health.yml`
+- `.github/data/required_actions_secrets.json`
+- `.github/scripts/secret_health.py`
+- `.github/scripts/test_secret_health.py`
 
-## Founder action to make it green
-Create an **organization-level Actions secret** named `SECRET_HEALTH_TOKEN`.
+The former `szl-doctrine/.github/workflows/secret-health.yml` lane is retired. It
+depended on a long-lived `SECRET_HEALTH_TOKEN` PAT that expired and must not be
+restored.
 
-### Token requirements (fine-grained PAT or GitHub App installation token)
-- Resource owner: **szl-holdings** organization, all repositories (or all active repos).
-- Repository permissions:
-  - **Secrets: Read**
-  - **Administration: Read** (needed to list per-repo secrets)
-  - **Metadata: Read** (implicit)
+## Authentication contract
 
-### Steps
-1. Create a fine-grained PAT (GitHub → Settings → Developer settings →
-   Fine-grained tokens) scoped to `szl-holdings` with the permissions above,
-   **or** install a GitHub App with equivalent permissions and use its token.
-2. Org → Settings → Secrets and variables → Actions → **New organization secret**.
-3. Name: `SECRET_HEALTH_TOKEN`. Value: the token from step 1.
-4. Repository access: **All repositories** (or the active set).
-5. Re-run the `secret-health` workflow (Actions → secret-health → Run workflow).
+The central control tries a short-lived qillqaq GitHub App installation token
+first, requesting only repository and organization `Secrets: read`. Until that
+installation permission upgrade is approved, it uses the existing governed
+`SZL_GITHUB_TOKEN` from the organization control-plane repository.
 
-Once provisioned, the guard passes and the audit step runs, producing a
-PRESENT/MISSING table per repo. If that table then shows any **MISSING** required
-secret, those are *real* gaps to remediate (add the named secret to that repo) —
-again a founder action, never auto-fabricated.
+The fallback was exercised successfully on July 27, 2026. It reported all four
+current required names present and zero unavailable or missing requirements.
 
-## Notes
-- Never commit any token/private key to the repo. The PAT lives only as an org secret.
-- This workflow is a **presence audit**, not a secret scanner; it is unrelated to
-  gitleaks/`gitleaks.yml`, which scans committed content for leaked values.
+## Evidence boundary
+
+GitHub's listing endpoints return secret names and timestamps, not encrypted
+values. The control records only:
+
+- repository;
+- required secret name;
+- `PRESENT`, `MISSING`, or `UNAVAILABLE` state;
+- the machine-identity source label.
+
+It never requests, receives, prints, hashes, measures, or stores a secret value,
+token value, token prefix, token length, token digest, expiration, or other token
+metadata.
+
+## Fail-closed semantics
+
+- `PRESENT`: authoritative listing succeeded and the name exists directly or via
+  an organization secret available to the repository.
+- `MISSING`: authoritative listing succeeded and the required name is absent.
+- `UNAVAILABLE`: no governed machine identity exists or the API could not be read
+  authoritatively.
+
+Authorization or network failure is never relabeled as a missing secret and never
+produces a fabricated green state.
+
+## Operator rules
+
+- Do not create another long-lived replacement PAT for this audit.
+- Do not restore the retired Doctrine workflow.
+- Approve qillqaq's read-only Secrets permission upgrade when organizationally
+  appropriate; no source change is required afterward.
+- Rotate a credential through its owning provider only when there is evidence its
+  value was exposed. Name presence does not prove credential validity.
