@@ -4,11 +4,16 @@
 from __future__ import annotations
 
 import json
+import io
+import os
 import re
 import shutil
 import subprocess
+import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import URLError
 
 import dco_required as dco_check
@@ -21,10 +26,22 @@ TOKEN = "test-token"
 EXPECTED_BASE_SHA = "f" * 40
 
 
-def _commit(index: int, message: str | None = None) -> dict[str, object]:
+def _commit(
+    index: int,
+    message: str | None = None,
+    *,
+    author_name: str = "Test User",
+    author_email: str = "test@example.com",
+) -> dict[str, object]:
     if message is None:
         message = f"fix: commit {index}\n\nSigned-off-by: Test User <test@example.com>"
-    return {"sha": f"{index:040x}", "commit": {"message": message}}
+    return {
+        "sha": f"{index:040x}",
+        "commit": {
+            "message": message,
+            "author": {"name": author_name, "email": author_email},
+        },
+    }
 
 
 def _signed_commits(count: int, *, start: int = 1) -> list[dict[str, object]]:
@@ -102,6 +119,99 @@ def _stable_responses(
     return head_sha, [metadata, *pages, metadata, *pages, metadata]
 
 
+def _real_commit(
+    message: str,
+    *,
+    author_name: str = "Test User",
+    author_email: str = "test@example.com",
+) -> dict[str, object]:
+    """Create a real commit and return its exact GitHub API-shaped identity."""
+    git = shutil.which("git")
+    if git is None:
+        raise unittest.SkipTest("git is unavailable for real-commit fixtures")
+
+    with tempfile.TemporaryDirectory(prefix="dco-real-commit-") as root:
+        subprocess.run(
+            [git, "-C", root, "init", "--quiet"],
+            check=True,
+            capture_output=True,
+            timeout=5,
+        )
+        tree = subprocess.run(
+            [git, "-C", root, "mktree"],
+            input=b"",
+            check=True,
+            capture_output=True,
+            timeout=5,
+        ).stdout.strip().decode("ascii")
+        commit_env = os.environ.copy()
+        commit_env.update(
+            {
+                "GIT_AUTHOR_NAME": author_name,
+                "GIT_AUTHOR_EMAIL": author_email,
+                "GIT_AUTHOR_DATE": "2000-01-01T00:00:00+00:00",
+                "GIT_COMMITTER_NAME": "DCO Test Committer",
+                "GIT_COMMITTER_EMAIL": "committer@example.com",
+                "GIT_COMMITTER_DATE": "2000-01-01T00:00:00+00:00",
+            }
+        )
+        sha = subprocess.run(
+            [git, "-C", root, "commit-tree", tree],
+            input=message.encode("utf-8"),
+            env=commit_env,
+            check=True,
+            capture_output=True,
+            timeout=5,
+        ).stdout.strip().decode("ascii")
+        raw_commit = subprocess.run(
+            [git, "-C", root, "cat-file", "commit", sha],
+            check=True,
+            capture_output=True,
+            timeout=5,
+        ).stdout
+        raw_message = raw_commit.split(b"\n\n", 1)[1]
+        api_message = raw_message.decode("utf-8").rstrip("\n")
+        identity = subprocess.run(
+            [git, "-C", root, "show", "-s", "--format=%an%x00%ae", sha],
+            check=True,
+            capture_output=True,
+            timeout=5,
+        ).stdout.decode("utf-8").rstrip("\n").split("\x00", 1)
+
+    return {
+        "sha": sha,
+        "commit": {
+            "message": api_message,
+            "author": {"name": identity[0], "email": identity[1]},
+        },
+    }
+
+
+def _run_production_entry(
+    commit: dict[str, object],
+) -> tuple[int, str, str, list[str]]:
+    expected_head, responses = _stable_responses([commit])
+    opener = _SequenceOpener(*responses)
+    environment = {
+        "GITHUB_API_URL": API_URL,
+        "GITHUB_REPOSITORY": REPOSITORY,
+        "GITHUB_TOKEN": TOKEN,
+        "PR_NUMBER": str(PR_NUMBER),
+        "EXPECTED_HEAD_SHA": expected_head,
+        "EXPECTED_BASE_SHA": EXPECTED_BASE_SHA,
+    }
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with (
+        patch.dict(os.environ, environment, clear=False),
+        patch.object(dco_check, "urlopen", opener),
+        redirect_stdout(stdout),
+        redirect_stderr(stderr),
+    ):
+        result = dco_check.main()
+    return result, stdout.getvalue(), stderr.getvalue(), opener.urls
+
+
 UNSIGNED_EMPTY_COMMIT = _commit(1, "chore: intentionally empty commit")
 UNSIGNED_MERGE_COMMIT = _commit(
     2,
@@ -141,6 +251,113 @@ class _SequenceOpener:
         if isinstance(response, _Response):
             return response
         return _Response(response)
+
+
+class RealCommitProductionEntryTests(unittest.TestCase):
+    def _assert_result(
+        self,
+        message: str,
+        *,
+        accepted: bool,
+        author_name: str = "Test User",
+        author_email: str = "test@example.com",
+    ) -> None:
+        commit = _real_commit(
+            message,
+            author_name=author_name,
+            author_email=author_email,
+        )
+        result, stdout, stderr, urls = _run_production_entry(commit)
+        self.assertEqual(len(urls), 7)
+        if accepted:
+            self.assertEqual(result, 0, stderr)
+            self.assertIn("DCO check passed", stdout)
+        else:
+            self.assertEqual(result, 1, stdout)
+            self.assertIn(str(commit["sha"]), stderr)
+
+    def test_folded_signoff_is_rejected_by_production_entry(self) -> None:
+        messages = (
+            "fix: folded signoff\n\nSigned-off-by:\n Test User <test@example.com>",
+            "fix: folded identity\n\nSigned-off-by: Test\n User <test@example.com>",
+        )
+        for message in messages:
+            with self.subTest(message=message):
+                self._assert_result(message, accepted=False)
+
+    def test_terminal_exact_marker_cannot_erase_invalid_postscript(self) -> None:
+        self._assert_result(
+            "fix: terminal exact marker\n\n"
+            "Signed-off-by: Test User <test@example.com>\n"
+            "non-trailer postscript\n\n---",
+            accepted=False,
+        )
+
+    def test_nonterminal_exact_patch_divider_policy(self) -> None:
+        self._assert_result(
+            "fix: signed patch\n\n"
+            "Signed-off-by: Test User <test@example.com>\n"
+            "---\n"
+            "diff --git a/file b/file",
+            accepted=True,
+        )
+        self._assert_result(
+            "fix: unsigned patch\n\n"
+            "Body without a sign-off.\n"
+            "---\n"
+            "Signed-off-by: Test User <test@example.com>",
+            accepted=False,
+        )
+
+    def test_terminal_padded_suffix_and_cr_markers_remain_dividers(self) -> None:
+        for marker in (
+            "--- ",
+            "---\t",
+            "--- patch follows",
+            "---\tpatch follows",
+            "---\r",
+            "---\rjunk",
+        ):
+            with self.subTest(marker=repr(marker)):
+                self._assert_result(
+                    "fix: terminal governed divider\n\n"
+                    "Signed-off-by: Test User <test@example.com>\n"
+                    "Git admits this group at fifty percent density.\n\n"
+                    f"{marker}",
+                    accepted=True,
+                )
+
+    def test_non_divider_controls_do_not_truncate_message(self) -> None:
+        for marker in ("---x", "----", " ---"):
+            with self.subTest(marker=marker):
+                self._assert_result(
+                    "fix: terminal non-divider\n\n"
+                    "Signed-off-by: Test User <test@example.com>\n"
+                    "non-trailer postscript\n\n"
+                    f"{marker}",
+                    accepted=False,
+                )
+
+    def test_author_name_and_email_must_match_exactly(self) -> None:
+        message = "fix: identity\n\nSigned-off-by: Test User <test@example.com>"
+        self._assert_result(message, accepted=True)
+        self._assert_result(
+            message,
+            accepted=False,
+            author_name="Different User",
+        )
+        self._assert_result(
+            message,
+            accepted=False,
+            author_email="different@example.com",
+        )
+
+    def test_merge_prefixed_unsigned_real_commit_is_rejected(self) -> None:
+        self._assert_result(
+            "Merge substantive policy update\n\n"
+            "This commit changes governed behavior without a sign-off.",
+            accepted=False,
+        )
 
 
 class DcoCheckTests(unittest.TestCase):
@@ -241,7 +458,12 @@ class DcoCheckTests(unittest.TestCase):
         )
 
     def test_one_character_signer_name_is_accepted(self) -> None:
-        commit = _commit(14, "fix: short signer\n\nSigned-off-by: X <x@example.com>")
+        commit = _commit(
+            14,
+            "fix: short signer\n\nSigned-off-by: X <x@example.com>",
+            author_name="X",
+            author_email="x@example.com",
+        )
 
         self.assertEqual(dco_check.unsigned_commit_shas([commit]), [])
 
@@ -290,6 +512,7 @@ class DcoCheckTests(unittest.TestCase):
                 "fix: horizontal signer\n\n"
                 f"Signed-off-by:{separator}A{separator}B{separator}"
                 f"<test@example.com>{separator}",
+                author_name=f"A{separator}B",
             )
             for index, separator in enumerate(separators, start=30)
         ]
@@ -1015,6 +1238,13 @@ class DcoCheckTests(unittest.TestCase):
             workflow,
             r"(?m)^\s*python3\s+policy/\.github/scripts/dco_required\.py\s*$",
         )
+        compile_command = "python3 -m py_compile policy/.github/scripts/dco_required.py"
+        test_command = "python3 policy/.github/scripts/test_dco_required.py"
+        enforce_command = "python3 policy/.github/scripts/dco_required.py"
+        self.assertIn(compile_command, workflow)
+        self.assertIn(test_command, workflow)
+        self.assertLess(workflow.index(compile_command), workflow.index(test_command))
+        self.assertLess(workflow.index(test_command), workflow.index(enforce_command))
         self.assertIn(".github/workflows/dco-required.yml", workflow)
         self.assertNotIn("ready_for_review", workflow)
         self.assertNotIn("The active ruleset requires this workflow", workflow)
