@@ -357,6 +357,17 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     return node.value
                 return None
 
+            def is_safe_vars_args(node) -> bool:
+                return (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "vars"
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Name)
+                    and node.args[0].id == "args"
+                    and not node.keywords
+                )
+
             def contains_governed_update_key(node) -> bool:
                 for candidate in ast.walk(node):
                     if isinstance(candidate, ast.Dict) and any(
@@ -386,11 +397,7 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                         if candidate.func.id in {"globals", "locals"}:
                             return True
                         if candidate.func.id == "vars":
-                            if (
-                                len(candidate.args) != 1
-                                or candidate.keywords
-                                or is_dynamic_namespace(candidate.args[0])
-                            ):
+                            if not is_safe_vars_args(candidate):
                                 return True
                     if (
                         isinstance(candidate, ast.Attribute)
@@ -403,6 +410,58 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     ):
                         return True
                 return False
+
+            forbidden_origin_attributes = {
+                "__dict__",
+                "__globals__",
+                "f_globals",
+                "f_locals",
+                "modules",
+            }
+            dynamic_loader_names = {
+                "exec_module",
+                "import_module",
+                "load_module",
+            }
+            for origin in ast.walk(module):
+                if isinstance(origin, ast.Name) and origin.id == "__builtins__":
+                    reject_unprovable_namespace()
+                if (
+                    isinstance(origin, ast.Attribute)
+                    and origin.attr in forbidden_origin_attributes
+                ):
+                    reject_unprovable_namespace()
+                if isinstance(origin, ast.Import) and any(
+                    alias.name in {"__main__", "builtins"}
+                    for alias in origin.names
+                ):
+                    reject_unprovable_namespace()
+                if isinstance(origin, ast.ImportFrom) and (
+                    origin.module == "__main__"
+                    or (
+                        origin.module == "sys"
+                        and any(alias.name == "modules" for alias in origin.names)
+                    )
+                ):
+                    reject_unprovable_namespace()
+                if isinstance(origin, ast.Call):
+                    origin_call_name = None
+                    if isinstance(origin.func, ast.Name):
+                        origin_call_name = origin.func.id
+                    elif isinstance(origin.func, ast.Attribute):
+                        origin_call_name = origin.func.attr
+                    if origin_call_name in {"globals", "locals"}:
+                        reject_unprovable_namespace()
+                    if origin_call_name == "vars" and not is_safe_vars_args(origin):
+                        reject_unprovable_namespace()
+                    if origin_call_name in dynamic_loader_names | {"attrgetter"}:
+                        reject_unprovable_namespace()
+                    if origin_call_name == "getattr" and (
+                        len(origin.args) < 2
+                        or literal_name(origin.args[1])
+                        in forbidden_origin_attributes
+                    ):
+                        reject_unprovable_namespace()
 
             def assigned_names(target) -> set[str]:
                 if isinstance(target, ast.Name):
@@ -475,9 +534,7 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     and (
                         (
                             node.func.id == "vars"
-                            and len(node.args) == 1
-                            and not node.keywords
-                            and not is_dynamic_namespace(node.args[0])
+                            and is_safe_vars_args(node)
                         )
                         or (
                             node.func.id == "getattr"

@@ -339,10 +339,10 @@ class BoundaryTests(unittest.TestCase):
             b"publisher_source = SOURCE_REPO\n"
             b"publisher_target = HF_REPO\n"
             b"pattern = re.compile(r'^[0-9a-f]{40}$')\n"
-            b"arguments_dict = vars(arguments)\n"
+            b"arguments_dict = vars(args)\n"
             b"safe_status = getattr(record, 'status', None)\n"
-            b"safe_module = sys.modules['publisher_helpers']\n"
-            b"safe_module_name = safe_module.__name__\n"
+            b"python_version = sys.version_info\n"
+            b"module_name = __name__\n"
             b"safe_settings = {}\n"
             b"safe_key = 'display'\n"
             b"safe_settings[safe_key] = 'ok'\n"
@@ -399,7 +399,27 @@ class BoundaryTests(unittest.TestCase):
             valid + b'first = sys.modules["builtins"]\nsecond = first\nthird = second\nrunner = third.exec\n',
             valid + b'holder = {"module": sys.modules["builtins"]}\nrunner = holder["module"].exec\n',
             valid + b'def load_builtins():\n    return sys.modules["builtins"]\nrunner = load_builtins().exec\n',
+            valid + b'def load_builtins(value=sys.modules["builtins"]):\n    return value\nrunner = load_builtins().exec\n',
+            valid + b'for builtins_module in [sys.modules["builtins"]]:\n    runner = builtins_module.exec\n',
+            valid + b'runners = [builtins_module.exec for builtins_module in [sys.modules["builtins"]]]\n',
+            valid + b'with contextlib.nullcontext(sys.modules["builtins"]) as builtins_module:\n    runner = builtins_module.exec\n',
+            valid + b'try:\n    raise RuntimeError\nexcept sys.modules["builtins"].RuntimeError as error:\n    runner = error.__traceback__.tb_frame.f_globals["__builtins__"]["exec"]\n',
+            valid + b'load_builtins = lambda value=sys.modules["builtins"]: value\nrunner = load_builtins().exec\n',
+            valid + b'match {"module": sys.modules["builtins"]}:\n    case {"module": builtins_module}:\n        runner = builtins_module.exec\n',
+            valid + b'if (builtins_module := sys.modules["builtins"]):\n    runner = builtins_module.exec\n',
+            valid + b'def yield_builtins():\n    yield sys.modules["builtins"]\nrunner = next(yield_builtins()).exec\n',
+            valid + b'consume(sys.modules["builtins"])\n',
             valid + b'holder.namespace = sys.modules["builtins"]\n',
+            valid + b'builtins_namespace = __builtins__\n',
+            valid + b'current_module = sys.modules[__name__]\n',
+            valid + b'main_module = sys.modules["__main__"]\n',
+            valid + b'from sys import modules as module_registry\n',
+            valid + b'import __main__ as current_module\n',
+            valid + b'dynamic_module = importlib.import_module("builtins")\n',
+            valid + b'module_registry = getattr(sys, "modules")\n',
+            valid + b'namespace = function.__globals__\n',
+            valid + b'namespace = sys._getframe().f_globals\n',
+            valid + b'namespace = vars(record)\n',
             valid + b'key = "HF_" + "REPO"\nsys.modules[__name__].__dict__[key] = "wrong"\n',
             valid + b'key = "HF_" + "REPO"\ndel sys.modules[__name__].__dict__[key]\n',
             valid + b'key = "HF_" + "REPO"\nglobals()[key] = "wrong"\n',
