@@ -426,7 +426,16 @@ class DcoCheckTests(unittest.TestCase):
             self.skipTest("git is unavailable for differential fixtures")
 
         fixtures: list[tuple[str, str, bool]] = []
-        for divider in ("---", "--- ", "---\t", "--- \t"):
+        for divider in (
+            "---",
+            "--- ",
+            "---\t",
+            "--- \t",
+            "--- patch follows",
+            "---\tpatch follows",
+            "---\r",
+            "---\rjunk",
+        ):
             fixtures.extend(
                 (
                     (
@@ -460,26 +469,28 @@ class DcoCheckTests(unittest.TestCase):
                     "diff --git a/file b/file",
                     False,
                 ),
-                (
-                    "leading space is not a divider",
-                    "fix: leading-space non-divider\n\n"
-                    "Reviewed-by: Reviewer <reviewer@example.com>\n"
-                    " ---\n"
-                    "Signed-off-by: Test User <test@example.com>",
-                    True,
-                ),
             )
         )
+        for non_divider in ("---x", "----", " ---"):
+            fixtures.append(
+                (
+                    f"{non_divider!r} is not a divider",
+                    "fix: non-divider suffix\n\n"
+                    "Reviewed-by: Reviewer <reviewer@example.com>\n"
+                    f"{non_divider}\n"
+                    "Signed-off-by: Test User <test@example.com>",
+                    True,
+                )
+            )
         for label, message, expected in fixtures:
             with self.subTest(label=label):
                 parsed = subprocess.run(
                     [git, "interpret-trailers", "--parse"],
-                    input=message,
-                    text=True,
+                    input=message.encode("utf-8"),
                     capture_output=True,
                     check=True,
                     timeout=5,
-                ).stdout
+                ).stdout.decode("utf-8")
                 git_accepts = any(
                     line.lower().startswith("signed-off-by:")
                     for line in parsed.splitlines()
