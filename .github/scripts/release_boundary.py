@@ -442,6 +442,23 @@ def verify_manifest_target(manifest: dict, repository: str, head_sha: str, api: 
     return result
 
 
+def verify_all_active(manifest: dict, api: GitHubAPI) -> dict:
+    active = [
+        (repository, entry)
+        for repository, entry in sorted(manifest["targets"].items())
+        if entry["state"] == "ACTIVE"
+    ]
+    if not active:
+        raise BoundaryError("no ACTIVE manifest targets exist; final heads are not authorized")
+    return {
+        "status": "ALL_ACTIVE_MANIFEST_TARGETS_VERIFIED",
+        "targets": [
+            verify_manifest_target(manifest, repository, entry["observed_candidate_sha"], api)
+            for repository, entry in active
+        ],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, required=True)
@@ -462,7 +479,7 @@ def main() -> int:
         if args.verify_target:
             result = verify_manifest_target(manifest, args.verify_target, _exact_sha(args.head_sha, "verification head"), api)
         elif args.verify_all_active:
-            result = {"status": "ALL_ACTIVE_MANIFEST_TARGETS_VERIFIED", "targets": [verify_manifest_target(manifest, repository, entry["observed_candidate_sha"], api) for repository, entry in sorted(manifest["targets"].items()) if entry["state"] == "ACTIVE"]}
+            result = verify_all_active(manifest, api)
         else:
             try:
                 event = json.loads(args.event.read_text(encoding="utf-8"))

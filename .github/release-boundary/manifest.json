@@ -4,14 +4,14 @@
   "targets": {
     "szl-holdings/energy-attest-holo": {
       "repository_id": 1295929955,
-      "state": "ACTIVE",
-      "observed_candidate_sha": "c158ef29b1ad9d5860a5af2218ffc4507ce34a4a",
-      "pending_reason": null,
-      "workflow_files": {".github/workflows/hf-static-space.yml": "b88250092855107ae94e7a65fd1c6ec1b7dc2f76f2db82bdfc571ca7fcd420f7"},
+      "state": "PENDING",
+      "observed_candidate_sha": null,
+      "pending_reason": "Static publisher is moving after the previously verified c158ef29b1ad9d5860a5af2218ffc4507ce34a4a evidence head; final reviewed successor hashes are required.",
+      "workflow_files": {".github/workflows/hf-static-space.yml": "PENDING"},
       "secret_execution_files": {
-        ".hf-space.json": "1819b0cd12e8defb8c81bcb267461ce5b5e35ab980b6c80c3d22a3e55785714b",
-        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "dc85844756867cbbe123a17d9140761eeb947d46c43efab6e88a661bdc37791c"
+        ".hf-space.json": "PENDING",
+        "requirements/hf-publisher.lock": "PENDING",
+        "scripts/hf_static_space.py": "PENDING"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -27,14 +27,14 @@
     },
     "szl-holdings/governed-norm-holo": {
       "repository_id": 1295931607,
-      "state": "ACTIVE",
-      "observed_candidate_sha": "8c5a4c358a54de57ab627a3af3f80e55d938beb2",
-      "pending_reason": null,
-      "workflow_files": {".github/workflows/hf-static-space.yml": "b88250092855107ae94e7a65fd1c6ec1b7dc2f76f2db82bdfc571ca7fcd420f7"},
+      "state": "PENDING",
+      "observed_candidate_sha": null,
+      "pending_reason": "Static publisher is moving after the previously verified 8c5a4c358a54de57ab627a3af3f80e55d938beb2 evidence head; final reviewed successor hashes are required.",
+      "workflow_files": {".github/workflows/hf-static-space.yml": "PENDING"},
       "secret_execution_files": {
-        ".hf-space.json": "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
-        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "dc85844756867cbbe123a17d9140761eeb947d46c43efab6e88a661bdc37791c"
+        ".hf-space.json": "PENDING",
+        "requirements/hf-publisher.lock": "PENDING",
+        "scripts/hf_static_space.py": "PENDING"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -50,14 +50,14 @@
     },
     "szl-holdings/lambda-gate-holo": {
       "repository_id": 1295931629,
-      "state": "ACTIVE",
-      "observed_candidate_sha": "e1e58849bc817f81466fc969014e8fa352172060",
-      "pending_reason": null,
-      "workflow_files": {".github/workflows/hf-static-space.yml": "b88250092855107ae94e7a65fd1c6ec1b7dc2f76f2db82bdfc571ca7fcd420f7"},
+      "state": "PENDING",
+      "observed_candidate_sha": null,
+      "pending_reason": "Static publisher is moving after the previously verified e1e58849bc817f81466fc969014e8fa352172060 evidence head; final reviewed successor hashes are required.",
+      "workflow_files": {".github/workflows/hf-static-space.yml": "PENDING"},
       "secret_execution_files": {
-        ".hf-space.json": "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
-        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "dc85844756867cbbe123a17d9140761eeb947d46c43efab6e88a661bdc37791c"
+        ".hf-space.json": "PENDING",
+        "requirements/hf-publisher.lock": "PENDING",
+        "scripts/hf_static_space.py": "PENDING"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -73,14 +73,14 @@
     },
     "szl-holdings/receipt-chain-live": {
       "repository_id": 1295940016,
-      "state": "ACTIVE",
-      "observed_candidate_sha": "ed87f1cfa3c4bf370dc492f978a19444d0c5d5b4",
-      "pending_reason": null,
-      "workflow_files": {".github/workflows/hf-static-space.yml": "b88250092855107ae94e7a65fd1c6ec1b7dc2f76f2db82bdfc571ca7fcd420f7"},
+      "state": "PENDING",
+      "observed_candidate_sha": null,
+      "pending_reason": "Static publisher is moving after the previously verified ed87f1cfa3c4bf370dc492f978a19444d0c5d5b4 evidence head; final reviewed successor hashes are required.",
+      "workflow_files": {".github/workflows/hf-static-space.yml": "PENDING"},
       "secret_execution_files": {
-        ".hf-space.json": "4fc85a455d2ea0bb7222c166df55e663eb20cceb9caedf245373402dcd5f024e",
-        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "dc85844756867cbbe123a17d9140761eeb947d46c43efab6e88a661bdc37791c"
+        ".hf-space.json": "PENDING",
+        "requirements/hf-publisher.lock": "PENDING",
+        "scripts/hf_static_space.py": "PENDING"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -96,23 +96,23 @@
     },
     "szl-holdings/szl-kernels-live": {
       "repository_id": 1295941334,
-      "state": "ACTIVE",
-      "observed_candidate_sha": "8b43f76758abdb9b1b18e37020ad2112c5e39880",
-      "pending_reason": null,
+      "state": "PENDING",
+      "observed_candidate_sha": null,
+      "pending_reason": "Kernel current head 32f197c remains under independent review; exact final workflow and secret-closure hashes are not authorized.",
       "workflow_files": {
-        ".github/workflows/hf-space-deploy.yml": "44bde94ce3dae3a457146f2443c1510e479512b34b36a56b2e575b434a7cd79c",
-        ".github/workflows/kernel-contracts.yml": "2977853336162ed4132f54c5f76af6e5b0976e40028bde326995e1803d04a98b"
+        ".github/workflows/hf-space-deploy.yml": "PENDING",
+        ".github/workflows/kernel-contracts.yml": "PENDING"
       },
       "secret_execution_files": {
-        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/build_hf_space_bundle.py": "90f2d41a356bf4150ce078a6629dc8110f2e8f0789191e1f8b95def4e3c498e7",
-        "scripts/deploy_hf_space.py": "bff97106365a4c80781f59ebafe10837ecd2f39f128c69315bbe2fb4e0c8821d",
-        "scripts/kernel_portfolio_truth.mjs": "59ead9dcf02747fe4bab58fa3f78e9f7209dc767de4dedfdfaf3da02300655c3",
-        "scripts/snapshot_kernel_contracts.py": "15e5c54b1a17aa3bee2f1d63d0494f5dbc11f73c7100e75415b3c5f798e7edd7",
-        "scripts/verify_kernel_registry.py": "651d3da3a64f9180a7d47ebb577e870c6d585c171bfc945f4bdfeb17980a259c",
-        "tests/test_hf_space_bundle.py": "89f535dbb40877a129386b6f0c2977fc6d4a0d0cfac3ad2334d400ab4d428bde",
-        "tests/test_kernel_portfolio_truth.mjs": "7751d55081a2946f56bfec888948c4bf5d5880b96092d53458a92b4f2c55478d",
-        "tests/test_kernel_registry.py": "6c8d2827f5f1c37ec353655c46f45100f046cb767da39ab45f9cd3b98bc5957b"
+        "requirements/hf-publisher.lock": "PENDING",
+        "scripts/build_hf_space_bundle.py": "PENDING",
+        "scripts/deploy_hf_space.py": "PENDING",
+        "scripts/kernel_portfolio_truth.mjs": "PENDING",
+        "scripts/snapshot_kernel_contracts.py": "PENDING",
+        "scripts/verify_kernel_registry.py": "PENDING",
+        "tests/test_hf_space_bundle.py": "PENDING",
+        "tests/test_kernel_portfolio_truth.mjs": "PENDING",
+        "tests/test_kernel_registry.py": "PENDING"
       },
       "mutable_public_assets": [
         "LICENSE", "README.md", "contracts/governed-inference-meter/contract.json",
@@ -140,14 +140,14 @@
     },
     "szl-holdings/szl-provctl-live": {
       "repository_id": 1295941247,
-      "state": "ACTIVE",
-      "observed_candidate_sha": "9124d83a4b39f29c75afdc74ad921a0be4c08d09",
-      "pending_reason": null,
-      "workflow_files": {".github/workflows/hf-static-space.yml": "b88250092855107ae94e7a65fd1c6ec1b7dc2f76f2db82bdfc571ca7fcd420f7"},
+      "state": "PENDING",
+      "observed_candidate_sha": null,
+      "pending_reason": "Static publisher is moving after the previously verified 9124d83a4b39f29c75afdc74ad921a0be4c08d09 evidence head; final reviewed successor hashes are required.",
+      "workflow_files": {".github/workflows/hf-static-space.yml": "PENDING"},
       "secret_execution_files": {
-        ".hf-space.json": "24f23b8e01c6d53f82b387de9041d735007a78f175cf523dcefbca198ba193a4",
-        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "dc85844756867cbbe123a17d9140761eeb947d46c43efab6e88a661bdc37791c"
+        ".hf-space.json": "PENDING",
+        "requirements/hf-publisher.lock": "PENDING",
+        "scripts/hf_static_space.py": "PENDING"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {

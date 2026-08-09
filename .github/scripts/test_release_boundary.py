@@ -171,10 +171,18 @@ class BoundaryTests(unittest.TestCase):
         self.entry = self.manifest["targets"][REPOSITORY]
         self.env = {"EVENT_REPOSITORY": REPOSITORY, "EVENT_REPOSITORY_ID": str(REPOSITORY_ID), "EVENT_HEAD_SHA": HEAD, "GITHUB_SHA": HEAD}
 
-    def test_repository_manifest_has_all_six_active_exact_heads(self) -> None:
+    def test_repository_manifest_is_fail_closed_while_heads_move(self) -> None:
         manifest = RB.load_manifest(MANIFEST_PATH)
-        self.assertEqual({name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"}, set(RB.TARGET_IDS))
-        self.assertEqual(manifest["targets"]["szl-holdings/szl-kernels-live"]["observed_candidate_sha"], "8b43f76758abdb9b1b18e37020ad2112c5e39880")
+        self.assertEqual(
+            {name for name, item in manifest["targets"].items() if item["state"] == "PENDING"},
+            set(RB.TARGET_IDS),
+        )
+        for entry in manifest["targets"].values():
+            self.assertIsNone(entry["observed_candidate_sha"])
+            self.assertEqual(set(entry["workflow_files"].values()), {"PENDING"})
+            self.assertEqual(set(entry["secret_execution_files"].values()), {"PENDING"})
+        with self.assertRaisesRegex(RB.BoundaryError, "no ACTIVE"):
+            RB.verify_all_active(manifest, FakeAPI())
 
     def test_pending_fails_before_api(self) -> None:
         pending = copy.deepcopy(self.manifest)
