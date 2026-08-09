@@ -1,0 +1,166 @@
+{
+  "schema": "szl.release-boundary-manifest/v1",
+  "source_repository": "szl-holdings/szl-doctrine",
+  "targets": {
+    "szl-holdings/energy-attest-holo": {
+      "repository_id": 1295929955,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "ecbebc6a5785f460751ecd5af86b5c12ccd31798",
+      "pending_reason": null,
+      "workflow_files": {".github/workflows/hf-static-space.yml": "38d0274cbdc1249eb80e72b6f2d49adb973ba206456287d64232ba4d98a03c20"},
+      "secret_execution_files": {
+        ".hf-space.json": "1819b0cd12e8defb8c81bcb267461ce5b5e35ab980b6c80c3d22a3e55785714b",
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "scripts/hf_static_space.py": "8ebb1197195e4aaaf4b5ba1d8dec5c33a96fc5c8261a5d4cfe64bf1a1dc1796a"
+      },
+      "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-static-space.yml",
+        "publisher_script": "scripts/hf_static_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": ["scripts"],
+        "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I scripts/hf_static_space.py",
+        "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": "szl-holdings/energy-attest-holo", "target": "SZLHOLDINGS/energy-attest-holo"}],
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "QILLQAQ_PRIVATE_KEY", "HF_TOKEN", "permission-administration: read", "permission-contents: read", "repositories: ${{ github.event.repository.name }}", "python -I -m venv", "--require-hashes", "--only-binary=:all:", "publish-exact-protected-main", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/hf-live-attestation.json", "Require terminal governed success"],
+        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "authorization = require_governed_main", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "receipt_minted"]
+      }
+    },
+    "szl-holdings/governed-norm-holo": {
+      "repository_id": 1295931607,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "76224312e31701ab28c1f01ea248837e9585f618",
+      "pending_reason": null,
+      "workflow_files": {".github/workflows/hf-static-space.yml": "38d0274cbdc1249eb80e72b6f2d49adb973ba206456287d64232ba4d98a03c20"},
+      "secret_execution_files": {
+        ".hf-space.json": "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "scripts/hf_static_space.py": "8ebb1197195e4aaaf4b5ba1d8dec5c33a96fc5c8261a5d4cfe64bf1a1dc1796a"
+      },
+      "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-static-space.yml",
+        "publisher_script": "scripts/hf_static_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": ["scripts"],
+        "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I scripts/hf_static_space.py",
+        "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": "szl-holdings/governed-norm-holo", "target": "SZLHOLDINGS/governed-norm-holo"}],
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "QILLQAQ_PRIVATE_KEY", "HF_TOKEN", "permission-administration: read", "permission-contents: read", "repositories: ${{ github.event.repository.name }}", "python -I -m venv", "--require-hashes", "--only-binary=:all:", "publish-exact-protected-main", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/hf-live-attestation.json", "Require terminal governed success"],
+        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "authorization = require_governed_main", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "receipt_minted"]
+      }
+    },
+    "szl-holdings/lambda-gate-holo": {
+      "repository_id": 1295931629,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "7ca2f9895511f0063f2d6fdb19b9e1acd932d321",
+      "pending_reason": null,
+      "workflow_files": {".github/workflows/hf-static-space.yml": "38d0274cbdc1249eb80e72b6f2d49adb973ba206456287d64232ba4d98a03c20"},
+      "secret_execution_files": {
+        ".hf-space.json": "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "scripts/hf_static_space.py": "8ebb1197195e4aaaf4b5ba1d8dec5c33a96fc5c8261a5d4cfe64bf1a1dc1796a"
+      },
+      "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-static-space.yml",
+        "publisher_script": "scripts/hf_static_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": ["scripts"],
+        "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I scripts/hf_static_space.py",
+        "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": "szl-holdings/lambda-gate-holo", "target": "SZLHOLDINGS/lambda-gate-holo"}],
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "QILLQAQ_PRIVATE_KEY", "HF_TOKEN", "permission-administration: read", "permission-contents: read", "repositories: ${{ github.event.repository.name }}", "python -I -m venv", "--require-hashes", "--only-binary=:all:", "publish-exact-protected-main", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/hf-live-attestation.json", "Require terminal governed success"],
+        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "authorization = require_governed_main", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "receipt_minted"]
+      }
+    },
+    "szl-holdings/receipt-chain-live": {
+      "repository_id": 1295940016,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "f39151a652671d21178a66b1971b420f5ef309d2",
+      "pending_reason": null,
+      "workflow_files": {".github/workflows/hf-static-space.yml": "38d0274cbdc1249eb80e72b6f2d49adb973ba206456287d64232ba4d98a03c20"},
+      "secret_execution_files": {
+        ".hf-space.json": "4fc85a455d2ea0bb7222c166df55e663eb20cceb9caedf245373402dcd5f024e",
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "scripts/hf_static_space.py": "8ebb1197195e4aaaf4b5ba1d8dec5c33a96fc5c8261a5d4cfe64bf1a1dc1796a"
+      },
+      "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-static-space.yml",
+        "publisher_script": "scripts/hf_static_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": ["scripts"],
+        "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I scripts/hf_static_space.py",
+        "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": "szl-holdings/receipt-chain-live", "target": "SZLHOLDINGS/receipt-chain-live"}],
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "QILLQAQ_PRIVATE_KEY", "HF_TOKEN", "permission-administration: read", "permission-contents: read", "repositories: ${{ github.event.repository.name }}", "python -I -m venv", "--require-hashes", "--only-binary=:all:", "publish-exact-protected-main", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/hf-live-attestation.json", "Require terminal governed success"],
+        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "authorization = require_governed_main", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "receipt_minted"]
+      }
+    },
+    "szl-holdings/szl-kernels-live": {
+      "repository_id": 1295941334,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "3cea443162476e9dce0a24645eb43e79de6b23d3",
+      "pending_reason": null,
+      "workflow_files": {
+        ".github/workflows/hf-space-deploy.yml": "3e935260121ffc8082150381a57b2c9f320a406f31b9dd35f9c5082bc0c0abb8",
+        ".github/workflows/kernel-contracts.yml": "89e8d517383afda0098bb64d6b065c16c56170bbd65430b6318af25a2b83dfbf"
+      },
+      "secret_execution_files": {
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "scripts/build_hf_space_bundle.py": "90f2d41a356bf4150ce078a6629dc8110f2e8f0789191e1f8b95def4e3c498e7",
+        "scripts/deploy_hf_space.py": "c0b42ca6dbadb32e64db67697190306c2fe404c7ddb219b0b2eaa150c9d7f51d",
+        "scripts/kernel_portfolio_truth.mjs": "59ead9dcf02747fe4bab58fa3f78e9f7209dc767de4dedfdfaf3da02300655c3",
+        "scripts/snapshot_kernel_contracts.py": "15e5c54b1a17aa3bee2f1d63d0494f5dbc11f73c7100e75415b3c5f798e7edd7",
+        "scripts/verify_kernel_registry.py": "651d3da3a64f9180a7d47ebb577e870c6d585c171bfc945f4bdfeb17980a259c",
+        "tests/fixtures/hf-static-window-huggingface-injection.html": "50e110935e42b44c4ea82b3544e2089de00a4082635d73931d14af5ab3d9b9de",
+        "tests/test_hf_space_bundle.py": "334efe1ca465412579e5a42abc3d65592e2b9f6e5ab462d289a0848f71f3c3b9",
+        "tests/test_kernel_portfolio_truth.mjs": "7751d55081a2946f56bfec888948c4bf5d5880b96092d53458a92b4f2c55478d",
+        "tests/test_kernel_registry.py": "6c8d2827f5f1c37ec353655c46f45100f046cb767da39ab45f9cd3b98bc5957b"
+      },
+      "mutable_public_assets": [
+        "LICENSE", "README.md", "contracts/governed-inference-meter/contract.json",
+        "contracts/index.json", "contracts/szl-blocked/contract.json",
+        "contracts/szl-formulas/contract.json", "contracts/szl-governed-norm/contract.json",
+        "contracts/szl-govsign/contract.json", "contracts/szl-invariants/contract.json",
+        "contracts/szl-kernels/contract.json", "contracts/szl-lambda-gate/contract.json",
+        "contracts/szl-ouroboros/contract.json", "contracts/szl-provctl/contract.json",
+        "evidence/kernel-selfcheck-20260726.json", "evidence/kernel-selfcheck-20260808.json",
+        "index.html", "registry/kernel-pins.json", "schemas/kernel-contract.schema.json"
+      ],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-space-deploy.yml",
+        "publisher_script": "scripts/deploy_hf_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": ["scripts", "tests"],
+        "isolated_invocation": "\"$RUNNER_TEMP/hf-publisher-venv/bin/python\" -I -P scripts/deploy_hf_space.py",
+        "identities": [
+          {"kind": "python_constants", "path": "scripts/build_hf_space_bundle.py", "source_repository": "szl-holdings/szl-kernels-live", "target": "SZLHOLDINGS/szl-kernels-live"},
+          {"kind": "python_constants", "path": "scripts/deploy_hf_space.py", "source_repository": "szl-holdings/szl-kernels-live", "target": "SZLHOLDINGS/szl-kernels-live"}
+        ],
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "QILLQAQ_PRIVATE_KEY", "HF_TOKEN", "permission-administration: read", "permission-contents: read", "repositories: ${{ github.event.repository.name }}", "python -I -P -m venv", "--require-hashes", "--only-binary=:all:", "Reauthorize exact protected main before credential use", "Attest final exact-revision receipt", "Upload separate failed-deployment evidence"],
+        "required_publisher_markers": ["SOURCE_REPO", "SOURCE_RELATION", "HF_REPO", "parent_commit=parent_sha", "delete_patterns=\"*\"", "mutation_authorization = require_governed_main", "post_publication_main = require_governed_main", "validate_public_provenance", "PARTIAL_AFTER_MUTATION"]
+      }
+    },
+    "szl-holdings/szl-provctl-live": {
+      "repository_id": 1295941247,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "06b42b6d99bc12550c54ec4284d3ad8873f43493",
+      "pending_reason": null,
+      "workflow_files": {".github/workflows/hf-static-space.yml": "38d0274cbdc1249eb80e72b6f2d49adb973ba206456287d64232ba4d98a03c20"},
+      "secret_execution_files": {
+        ".hf-space.json": "24f23b8e01c6d53f82b387de9041d735007a78f175cf523dcefbca198ba193a4",
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "scripts/hf_static_space.py": "8ebb1197195e4aaaf4b5ba1d8dec5c33a96fc5c8261a5d4cfe64bf1a1dc1796a"
+      },
+      "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-static-space.yml",
+        "publisher_script": "scripts/hf_static_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": ["scripts"],
+        "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I scripts/hf_static_space.py",
+        "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": "szl-holdings/szl-provctl-live", "target": "SZLHOLDINGS/szl-provctl-live"}],
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "QILLQAQ_PRIVATE_KEY", "HF_TOKEN", "permission-administration: read", "permission-contents: read", "repositories: ${{ github.event.repository.name }}", "python -I -m venv", "--require-hashes", "--only-binary=:all:", "publish-exact-protected-main", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/hf-live-attestation.json", "Require terminal governed success"],
+        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "authorization = require_governed_main", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "receipt_minted"]
+      }
+    }
+  }
+}
