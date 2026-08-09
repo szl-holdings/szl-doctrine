@@ -9,8 +9,9 @@ on:
   push:
     branches: [main]
     paths: ['.github/workflows/**']
+  # This context is platform-required for every policy-root PR. It must run
+  # even when a checker or test changes without a workflow-file diff.
   pull_request:
-    paths: ['.github/workflows/**']
 
 permissions:
   contents: read
