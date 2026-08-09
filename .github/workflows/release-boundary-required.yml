@@ -1,0 +1,132 @@
+name: External release boundary
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: release-boundary-${{ github.repository_id }}-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  release-boundary:
+    name: Release boundary enforcement
+    if: github.event_name == 'pull_request' && github.repository != 'szl-holdings/szl-doctrine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - name: Checkout exact protected doctrine source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: szl-holdings/szl-doctrine
+          ref: ${{ github.workflow_sha }}
+          path: .release-boundary-doctrine
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/release-boundary/manifest.json
+            .github/scripts/release_boundary.py
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.13"
+      - name: Enforce candidate without checkout or execution
+        working-directory: .release-boundary-doctrine
+        env:
+          DOCTRINE_SHA: ${{ github.workflow_sha }}
+          EVENT_REPOSITORY: ${{ github.repository }}
+          EVENT_REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DOCTRINE_SHA"
+          python -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --event "$GITHUB_EVENT_PATH"
+
+  release-boundary-merge-group:
+    name: Release boundary merge-group continuation
+    if: github.event_name == 'merge_group' && github.repository != 'szl-holdings/szl-doctrine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - name: Checkout exact protected doctrine source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: szl-holdings/szl-doctrine
+          ref: ${{ github.workflow_sha }}
+          path: .release-boundary-doctrine
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/release-boundary/manifest.json
+            .github/scripts/release_boundary.py
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.13"
+      - name: Enforce merge-group candidate without checkout or execution
+        working-directory: .release-boundary-doctrine
+        env:
+          DOCTRINE_SHA: ${{ github.workflow_sha }}
+          EVENT_REPOSITORY: ${{ github.repository }}
+          EVENT_REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DOCTRINE_SHA"
+          python -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --event "$GITHUB_EVENT_PATH"
+
+  source-contracts:
+    name: Release boundary source contracts
+    if: github.event_name == 'pull_request' && github.repository == 'szl-holdings/szl-doctrine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - name: Checkout exact doctrine candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.13"
+      - name: Test doctrine-owned boundary only
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --validate-manifest-only
+          python -I -m unittest .github/scripts/test_release_boundary.py -v
+          python -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --verify-all-active

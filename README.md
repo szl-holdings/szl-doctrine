@@ -120,6 +120,31 @@ propagated; nothing downstream invents its own numbers.
 
 </details>
 
+## External release boundary
+
+`External release boundary` is doctrine-owned merge authorization for the six
+allowlisted Hugging Face publisher repositories. Target pull requests and merge
+groups are evaluated by protected doctrine code at the exact required-workflow
+source revision. The boundary does not check out or execute target candidate
+code; it reads authoritative repository, pull-request, Git tree, and blob data
+through the GitHub API with read-only metadata, contents, and pull-request
+permissions.
+
+The manifest at `.github/release-boundary/manifest.json` is authoritative. An
+`ACTIVE` entry fixes the complete workflow path set and SHA-256 bytes for each
+workflow and every file in the secret-bearing publisher closure. Public data is
+outside that closure only when the fixed publisher cannot execute it on the CI
+host. A `PENDING` entry always fails closed. Refreshing a target requires a
+reviewed doctrine change recording one immutable candidate SHA and every exact
+hash, followed by exact-target verification.
+
+The stable required checks are `Release boundary enforcement` for pull requests
+and `Release boundary merge-group continuation` for merge queues; the
+event-inapplicable job is skipped. Passing either check means only that the exact
+candidate is authorized for merge under the recorded external boundary. It is
+not evidence that a protected-main publisher ran, that Hugging Face accepted a
+mutation, or that a public Space serves the candidate revision.
+
 <!-- szl-doctrine-footer -->
 
 ---
