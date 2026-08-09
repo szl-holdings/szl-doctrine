@@ -313,7 +313,8 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                             try:
                                 literals[target.id] = ast.literal_eval(node.value)
                             except (ValueError, TypeError):
-                                pass
+                                # Non-literal identities stay absent and fail the exact check below.
+                                continue
             if identity["source_repository"] not in literals.values() or identity["target"] not in literals.values():
                 raise BoundaryError("publisher Python identity constants are wrong")
 
