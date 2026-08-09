@@ -335,6 +335,22 @@ class BoundaryTests(unittest.TestCase):
         ).encode()
         RB._identities(REPOSITORY, contract, {"publisher.py": valid})
 
+        bypasses = [
+            valid + b'HF_REPO = choose_target()\n',
+            valid + b'if enabled:\n    HF_REPO = "SZLHOLDINGS/wrong-target"\n',
+            valid + b'if (HF_REPO := "SZLHOLDINGS/wrong-target"):\n    pass\n',
+            valid + b'HF_REPO += "-wrong"\n',
+            valid + f'HF_REPO = "{identity["target"]}"\n'.encode(),
+            valid + b'import wrong_target as HF_REPO\n',
+            valid + b'def operation(HF_REPO):\n    return HF_REPO\n',
+        ]
+        for bypass in bypasses:
+            with self.subTest(bypass=bypass), self.assertRaisesRegex(
+                RB.BoundaryError,
+                "rebound|literal",
+            ):
+                RB._identities(REPOSITORY, contract, {"publisher.py": bypass})
+
         misdirected_target = (
             f'SOURCE_REPO = "{REPOSITORY}"\n'
             'HF_REPO = "SZLHOLDINGS/wrong-target"\n'
