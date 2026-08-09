@@ -126,7 +126,7 @@ jobs:
           python -I .github/scripts/release_boundary.py \
             --manifest .github/release-boundary/manifest.json \
             --validate-manifest-only
-          python -I -m unittest .github/scripts/test_release_boundary.py -v
+          python -I .github/scripts/test_release_boundary.py -v
           python -I .github/scripts/release_boundary.py \
             --manifest .github/release-boundary/manifest.json \
             --verify-all-active
