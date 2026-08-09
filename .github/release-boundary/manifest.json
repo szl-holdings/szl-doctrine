@@ -5,13 +5,13 @@
     "szl-holdings/energy-attest-holo": {
       "repository_id": 1295929955,
       "state": "ACTIVE",
-      "observed_candidate_sha": "7101cf62852cdba0a90b2d90b035eee4bf4d47bf",
+      "observed_candidate_sha": "ecbebc6a5785f460751ecd5af86b5c12ccd31798",
       "pending_reason": null,
       "workflow_files": {".github/workflows/hf-static-space.yml": "38d0274cbdc1249eb80e72b6f2d49adb973ba206456287d64232ba4d98a03c20"},
       "secret_execution_files": {
         ".hf-space.json": "1819b0cd12e8defb8c81bcb267461ce5b5e35ab980b6c80c3d22a3e55785714b",
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "e730ca56d5704ff91ff52ccc78ee8031aba5597e0c4417ac111d15def37ab010"
+        "scripts/hf_static_space.py": "8ebb1197195e4aaaf4b5ba1d8dec5c33a96fc5c8261a5d4cfe64bf1a1dc1796a"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -28,13 +28,13 @@
     "szl-holdings/governed-norm-holo": {
       "repository_id": 1295931607,
       "state": "ACTIVE",
-      "observed_candidate_sha": "c20eb15751a5135470709ebe4e89a6673ed99b5f",
+      "observed_candidate_sha": "76224312e31701ab28c1f01ea248837e9585f618",
       "pending_reason": null,
       "workflow_files": {".github/workflows/hf-static-space.yml": "38d0274cbdc1249eb80e72b6f2d49adb973ba206456287d64232ba4d98a03c20"},
       "secret_execution_files": {
         ".hf-space.json": "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "e730ca56d5704ff91ff52ccc78ee8031aba5597e0c4417ac111d15def37ab010"
+        "scripts/hf_static_space.py": "8ebb1197195e4aaaf4b5ba1d8dec5c33a96fc5c8261a5d4cfe64bf1a1dc1796a"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -51,13 +51,13 @@
     "szl-holdings/lambda-gate-holo": {
       "repository_id": 1295931629,
       "state": "ACTIVE",
-      "observed_candidate_sha": "c004060b3636ba0aed75b9509c1188bc94186bb5",
+      "observed_candidate_sha": "7ca2f9895511f0063f2d6fdb19b9e1acd932d321",
       "pending_reason": null,
       "workflow_files": {".github/workflows/hf-static-space.yml": "38d0274cbdc1249eb80e72b6f2d49adb973ba206456287d64232ba4d98a03c20"},
       "secret_execution_files": {
         ".hf-space.json": "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "e730ca56d5704ff91ff52ccc78ee8031aba5597e0c4417ac111d15def37ab010"
+        "scripts/hf_static_space.py": "8ebb1197195e4aaaf4b5ba1d8dec5c33a96fc5c8261a5d4cfe64bf1a1dc1796a"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -74,13 +74,13 @@
     "szl-holdings/receipt-chain-live": {
       "repository_id": 1295940016,
       "state": "ACTIVE",
-      "observed_candidate_sha": "cd0a94533f5e07a8e6820da7ba6c7f6d4c8fb23e",
+      "observed_candidate_sha": "f39151a652671d21178a66b1971b420f5ef309d2",
       "pending_reason": null,
       "workflow_files": {".github/workflows/hf-static-space.yml": "38d0274cbdc1249eb80e72b6f2d49adb973ba206456287d64232ba4d98a03c20"},
       "secret_execution_files": {
         ".hf-space.json": "4fc85a455d2ea0bb7222c166df55e663eb20cceb9caedf245373402dcd5f024e",
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "e730ca56d5704ff91ff52ccc78ee8031aba5597e0c4417ac111d15def37ab010"
+        "scripts/hf_static_space.py": "8ebb1197195e4aaaf4b5ba1d8dec5c33a96fc5c8261a5d4cfe64bf1a1dc1796a"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -141,13 +141,13 @@
     "szl-holdings/szl-provctl-live": {
       "repository_id": 1295941247,
       "state": "ACTIVE",
-      "observed_candidate_sha": "92b230b985595e462fc055e1c05d789b4add58e1",
+      "observed_candidate_sha": "06b42b6d99bc12550c54ec4284d3ad8873f43493",
       "pending_reason": null,
       "workflow_files": {".github/workflows/hf-static-space.yml": "38d0274cbdc1249eb80e72b6f2d49adb973ba206456287d64232ba4d98a03c20"},
       "secret_execution_files": {
         ".hf-space.json": "24f23b8e01c6d53f82b387de9041d735007a78f175cf523dcefbca198ba193a4",
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "e730ca56d5704ff91ff52ccc78ee8031aba5597e0c4417ac111d15def37ab010"
+        "scripts/hf_static_space.py": "8ebb1197195e4aaaf4b5ba1d8dec5c33a96fc5c8261a5d4cfe64bf1a1dc1796a"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
