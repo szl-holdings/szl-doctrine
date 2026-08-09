@@ -35,7 +35,9 @@ jobs:
           path: policy
           fetch-depth: 1
           persist-credentials: false
-          sparse-checkout: .github/scripts/dco_required.py
+          sparse-checkout: |
+            .github/scripts/dco_required.py
+            .github/scripts/test_dco_required.py
           sparse-checkout-cone-mode: false
 
       - name: Validate every target pull-request commit
@@ -49,6 +51,7 @@ jobs:
           set -euo pipefail
           test "$(git -C policy rev-parse HEAD)" = "$POLICY_SHA"
           python3 -m py_compile policy/.github/scripts/dco_required.py
+          python3 policy/.github/scripts/test_dco_required.py
           python3 policy/.github/scripts/dco_required.py
 
   preserve-merge-queue-gate:
@@ -62,4 +65,5 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${{ github.event.merge_group.head_sha }}"
-          echo "DCO was enforced on each pull request before merge-queue admission."
+          echo "The active ruleset requires this workflow on every exact PR head before queue admission."
+          echo "This merge-group run preserves that mandatory admission decision; Evaluate mode must witness the queue path before activation."
