@@ -97,10 +97,10 @@
     "szl-holdings/szl-kernels-live": {
       "repository_id": 1295941334,
       "state": "ACTIVE",
-      "observed_candidate_sha": "eef5b2740cf8b591cc3f00312b9ee0657543448e",
+      "observed_candidate_sha": "dd0e106b5c78e7bfb901a28f3f61088d4ee368a9",
       "pending_reason": null,
       "workflow_files": {
-        ".github/workflows/hf-space-deploy.yml": "0f72b35a281e7f915e631ef1207bcb9cf6117c2a1e015c216ba7e53395e3eda5",
+        ".github/workflows/hf-space-deploy.yml": "79bf8eb8efd7b694cb70d9f15704cccb63826f759cd3ab840f555fb22a45092a",
         ".github/workflows/kernel-contracts.yml": "89e8d517383afda0098bb64d6b065c16c56170bbd65430b6318af25a2b83dfbf"
       },
       "secret_execution_files": {
@@ -111,7 +111,7 @@
         "scripts/snapshot_kernel_contracts.py": "15e5c54b1a17aa3bee2f1d63d0494f5dbc11f73c7100e75415b3c5f798e7edd7",
         "scripts/verify_kernel_registry.py": "651d3da3a64f9180a7d47ebb577e870c6d585c171bfc945f4bdfeb17980a259c",
         "tests/fixtures/hf-static-window-huggingface-injection.html": "50e110935e42b44c4ea82b3544e2089de00a4082635d73931d14af5ab3d9b9de",
-        "tests/test_hf_space_bundle.py": "444e851601c118c4358f86d1db712292506d86c7b91059898249594a8fe3baa7",
+        "tests/test_hf_space_bundle.py": "d24158b1d5c00aaeba3dcef75db27316342864c4f9f5157665f61c3ae5e801b9",
         "tests/test_kernel_portfolio_truth.mjs": "7751d55081a2946f56bfec888948c4bf5d5880b96092d53458a92b4f2c55478d",
         "tests/test_kernel_registry.py": "6c8d2827f5f1c37ec353655c46f45100f046cb767da39ab45f9cd3b98bc5957b"
       },
@@ -135,7 +135,7 @@
           {"kind": "python_constants", "path": "scripts/build_hf_space_bundle.py", "source_repository": "szl-holdings/szl-kernels-live", "target": "SZLHOLDINGS/szl-kernels-live"},
           {"kind": "python_constants", "path": "scripts/deploy_hf_space.py", "source_repository": "szl-holdings/szl-kernels-live", "target": "SZLHOLDINGS/szl-kernels-live"}
         ],
-        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "timeout-minutes: 60", "Record cumulative job budget origin", "Reserve full terminal-evidence budget before mutation", "max_pre_mutation_seconds=900", "QILLQAQ_PRIVATE_KEY", "HF_TOKEN", "permission-administration: read", "permission-contents: read", "repositories: ${{ github.event.repository.name }}", "python -I -P -m venv", "--require-hashes", "--only-binary=:all:", "Reauthorize exact protected main before credential use", "Synthesize deterministic canonical success receipt candidate", "Attest canonical final success receipt bytes", "subject-path: ${{ runner.temp }}/hf-terminal-candidate/hf-canonical-success-receipt.json", "Retry receipt-stage failure evidence upload", "deployment-failure-artifact-primary", "deployment-failure-artifact-retry", "--deployment-failure-artifact-primary-outcome", "--deployment-failure-artifact-retry-outcome", "enforce-terminal"],
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "timeout-minutes: 90", "Record cumulative job budget origin", "Reserve full terminal-evidence budget before mutation", "job_timeout_seconds=5400", "max_pre_mutation_seconds=900", "minimum_post_gate_seconds=4500", "QILLQAQ_PRIVATE_KEY", "HF_TOKEN", "permission-administration: read", "permission-contents: read", "repositories: ${{ github.event.repository.name }}", "python -I -P -m venv", "--require-hashes", "--only-binary=:all:", "Reauthorize exact protected main before credential use", "Synthesize deterministic canonical success receipt candidate", "Attest canonical final success receipt bytes", "subject-path: ${{ runner.temp }}/hf-terminal-candidate/hf-canonical-success-receipt.json", "Retry receipt-stage failure evidence upload", "Require failed-deployment evidence JSON before artifact upload", "id: deployment-failure-json", "steps.deployment-failure-json.outcome == 'success'", "deployment-failure-artifact-primary", "deployment-failure-artifact-retry", "--deployment-failure-artifact-primary-outcome", "--deployment-failure-artifact-retry-outcome", "enforce-terminal"],
         "required_publisher_markers": ["SOURCE_REPO", "SOURCE_RELATION", "HF_REPO", "parent_commit=parent_sha", "delete_patterns=\"*\"", "mutation_authorization = require_governed_main", "post_publication_main = require_governed_main", "validate_public_provenance", "_hf_upload_child_environment", "_kill_and_reap_child", "_is_exact_public_index_proof", "cross.public_index_normalized_sha256", "synthesize_candidate_receipt", "finalize_attested_receipt", "require_receipt_failure_artifact", "require_deployment_failure_artifact", "PARTIAL_AFTER_MUTATION"]
       }
     },
