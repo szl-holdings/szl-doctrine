@@ -17,9 +17,26 @@ COMMITS_PER_PAGE = 100
 MAX_PULL_REQUEST_COMMITS = 250
 REQUEST_TIMEOUT_SECONDS = 30
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+
+# Audited horizontal separators: TAB, SPACE, and every Unicode Zs code point.
+# Name and email tokens separately reject C0/C1 controls plus Unicode line and
+# paragraph separators, so no broad whitespace class can admit a line break.
+HORIZONTAL_SEPARATOR_PATTERN = (
+    r"[\x09\x20\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]"
+)
+NAME_TOKEN_PATTERN = (
+    r"[^<>\x00-\x20\x7f-\x9f\u00a0\u1680\u2000-\u200a"
+    r"\u2028\u2029\u202f\u205f\u3000]+"
+)
+EMAIL_PART_PATTERN = (
+    r"[^<>\x00-\x20\x7f-\x9f\u00a0\u1680\u2000-\u200a"
+    r"\u2028\u2029\u202f\u205f\u3000]+"
+)
 SIGNED_OFF_BY_PATTERN = re.compile(
-    r"^Signed-off-by:[ \t]+[^<>\s]+(?:[ \t]+[^<>\s]+)*"
-    r"[ \t]+<[^<>\s]+@[^<>\s]+>[ \t]*$",
+    rf"^Signed-off-by:{HORIZONTAL_SEPARATOR_PATTERN}+{NAME_TOKEN_PATTERN}"
+    rf"(?:{HORIZONTAL_SEPARATOR_PATTERN}+{NAME_TOKEN_PATTERN})*"
+    rf"{HORIZONTAL_SEPARATOR_PATTERN}+<{EMAIL_PART_PATTERN}@"
+    rf"{EMAIL_PART_PATTERN}>{HORIZONTAL_SEPARATOR_PATTERN}*$",
     re.IGNORECASE | re.MULTILINE,
 )
 

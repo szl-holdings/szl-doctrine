@@ -164,7 +164,7 @@ class DcoCheckTests(unittest.TestCase):
         )
 
     def test_vertical_whitespace_in_signer_names_is_rejected(self) -> None:
-        separators = ("\v", "\f", "\x85", "\u2028", "\u2029")
+        separators = ("\r", "\n", "\v", "\f", "\x85", "\u2028", "\u2029")
         malformed = [
             _commit(
                 index,
@@ -178,10 +178,58 @@ class DcoCheckTests(unittest.TestCase):
             [commit["sha"] for commit in malformed],
         )
 
+    def test_other_control_characters_in_signer_names_are_rejected(self) -> None:
+        controls = ("\x00", "\x01", "\x1c", "\x1f", "\x7f", "\x80", "\x9f")
+        malformed = [
+            _commit(
+                index,
+                f"fix: control name\n\nSigned-off-by: A{control}B <test@example.com>",
+            )
+            for index, control in enumerate(controls, start=20)
+        ]
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas(malformed),
+            [commit["sha"] for commit in malformed],
+        )
+
     def test_one_character_signer_name_is_accepted(self) -> None:
         commit = _commit(14, "fix: short signer\n\nSigned-off-by: X <x@example.com>")
 
         self.assertEqual(dco_check.unsigned_commit_shas([commit]), [])
+
+    def test_audited_horizontal_separators_are_accepted(self) -> None:
+        separators = (
+            "\t",
+            "\x20",
+            "\u00a0",
+            "\u1680",
+            "\u2000",
+            "\u2001",
+            "\u2002",
+            "\u2003",
+            "\u2004",
+            "\u2005",
+            "\u2006",
+            "\u2007",
+            "\u2008",
+            "\u2009",
+            "\u200a",
+            "\u202f",
+            "\u205f",
+            "\u3000",
+        )
+        signed = [
+            _commit(
+                index,
+                "fix: horizontal signer\n\n"
+                f"Signed-off-by:{separator}A{separator}B{separator}"
+                f"<test@example.com>{separator}",
+            )
+            for index, separator in enumerate(separators, start=30)
+        ]
+
+        self.assertEqual(dco_check.unsigned_commit_shas(signed), [])
 
     def test_valid_stable_pagination_passes(self) -> None:
         commits = _signed_commits(3)
