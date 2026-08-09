@@ -29,7 +29,7 @@ NAME_TOKEN_PATTERN = (
     r"\u2028\u2029\u202f\u205f\u3000]+"
 )
 EMAIL_PART_PATTERN = (
-    r"[^<>\x00-\x20\x7f-\x9f\u00a0\u1680\u2000-\u200a"
+    r"[^<>@\x00-\x20\x7f-\x9f\u00a0\u1680\u2000-\u200a"
     r"\u2028\u2029\u202f\u205f\u3000]+"
 )
 SIGNED_OFF_BY_PATTERN = re.compile(
@@ -45,15 +45,17 @@ HORIZONTAL_ONLY_PATTERN = re.compile(
 SAFE_TRAILER_TEXT_PATTERN = (
     r"[^\x00-\x08\x0a-\x1f\x7f-\x9f\u2028\u2029]*"
 )
+TRAILER_TOKEN_PATTERN = r"-*[A-Za-z0-9][A-Za-z0-9-]*"
+TRAILER_TOKEN_FULL_PATTERN = re.compile(rf"^{TRAILER_TOKEN_PATTERN}$")
 TRAILER_LINE_PATTERN = re.compile(
-    rf"^(?P<token>[A-Za-z0-9][A-Za-z0-9-]*)[ \t]*:"
+    rf"^(?P<token>{TRAILER_TOKEN_PATTERN})[ \t]*:"
     rf"(?P<value>{SAFE_TRAILER_TEXT_PATTERN})$"
 )
 CONTINUATION_LINE_PATTERN = re.compile(
     rf"^{HORIZONTAL_SEPARATOR_PATTERN}+{SAFE_TRAILER_TEXT_PATTERN}$"
 )
 POTENTIAL_TRAILER_LINE_PATTERN = re.compile(
-    rf"^[A-Za-z0-9][A-Za-z0-9-]*(?:{HORIZONTAL_SEPARATOR_PATTERN}|"
+    rf"^{TRAILER_TOKEN_PATTERN}(?:{HORIZONTAL_SEPARATOR_PATTERN}|"
     r"[\x00-\x08\x0a-\x1f\x7f-\x9f\u2028\u2029])*:"
 )
 HORIZONTAL_PREFIX_PATTERN = re.compile(
@@ -119,13 +121,18 @@ def fetch_pr_metadata(
     pr_number: int,
     token: str,
     expected_head_sha: str,
+    expected_base_sha: str,
     *,
     opener: Any = None,
-) -> tuple[int, str]:
-    """Retrieve an authoritative commit count bound to the expected PR head."""
+) -> tuple[int, str, str]:
+    """Retrieve PR metadata bound to the exact expected base and head."""
     expected_head_sha = _validate_sha(
         expected_head_sha,
         label="expected pull-request head",
+    )
+    expected_base_sha = _validate_sha(
+        expected_base_sha,
+        label="expected pull-request base",
     )
     url = f"{api_url.rstrip('/')}/repos/{repository}/pulls/{pr_number}"
     payload = _request_json(
@@ -159,6 +166,18 @@ def fetch_pr_metadata(
             "pull-request head mismatch: "
             f"metadata returned {head_sha}, expected {expected_head_sha}"
         )
+
+    base = payload.get("base")
+    base_sha = base.get("sha") if isinstance(base, dict) else None
+    if not isinstance(base_sha, str) or not SHA_PATTERN.fullmatch(base_sha):
+        raise DcoContractError(
+            "pull-request metadata did not declare a valid base SHA"
+        )
+    if base_sha != expected_base_sha:
+        raise DcoContractError(
+            "pull-request base mismatch: "
+            f"metadata returned {base_sha}, expected {expected_base_sha}"
+        )
     if declared_count > MAX_PULL_REQUEST_COMMITS:
         raise DcoContractError(
             f"pull request declares {declared_count} commits; "
@@ -166,7 +185,7 @@ def fetch_pr_metadata(
             f"{MAX_PULL_REQUEST_COMMITS}, so complete DCO coverage cannot be proven"
         )
 
-    return declared_count, head_sha
+    return declared_count, head_sha, base_sha
 
 
 def fetch_pr_commits(
@@ -263,23 +282,29 @@ def fetch_authoritative_pr_commits(
     pr_number: int,
     token: str,
     expected_head_sha: str,
+    expected_base_sha: str,
     *,
     opener: Any = None,
 ) -> tuple[int, list[dict[str, Any]]]:
-    """Bind complete pagination to stable metadata and the exact event head."""
+    """Bind stable complete pagination to the exact event base and head."""
     expected_head_sha = _validate_sha(
         expected_head_sha,
         label="expected pull-request head",
     )
-    declared_count, initial_head_sha = fetch_pr_metadata(
+    expected_base_sha = _validate_sha(
+        expected_base_sha,
+        label="expected pull-request base",
+    )
+    declared_count, initial_head_sha, initial_base_sha = fetch_pr_metadata(
         api_url,
         repository,
         pr_number,
         token,
         expected_head_sha,
+        expected_base_sha,
         opener=opener,
     )
-    commits = fetch_pr_commits(
+    initial_commits = fetch_pr_commits(
         api_url,
         repository,
         pr_number,
@@ -287,32 +312,80 @@ def fetch_authoritative_pr_commits(
         declared_count,
         opener=opener,
     )
-    final_count, final_head_sha = fetch_pr_metadata(
+    if initial_commits[-1]["sha"] != expected_head_sha:
+        raise DcoContractError(
+            "pull-request retrieved head mismatch: "
+            f"final commit was {initial_commits[-1]['sha']}, "
+            f"expected {expected_head_sha}"
+        )
+
+    middle_count, middle_head_sha, middle_base_sha = fetch_pr_metadata(
         api_url,
         repository,
         pr_number,
         token,
         expected_head_sha,
+        expected_base_sha,
         opener=opener,
     )
-    if final_count != declared_count or final_head_sha != initial_head_sha:
+    if (
+        middle_count != declared_count
+        or middle_head_sha != initial_head_sha
+        or middle_base_sha != initial_base_sha
+    ):
         raise DcoContractError(
             "pull-request metadata drifted during commit retrieval: "
-            f"initial head/count {initial_head_sha}/{declared_count}, "
-            f"final head/count {final_head_sha}/{final_count}"
+            "initial base/head/count "
+            f"{initial_base_sha}/{initial_head_sha}/{declared_count}, "
+            "middle base/head/count "
+            f"{middle_base_sha}/{middle_head_sha}/{middle_count}"
         )
-    if len(commits) != declared_count:
-        raise DcoContractError(
-            "pull-request commit count mismatch after retrieval: "
-            f"retrieved {len(commits)}, metadata declared {declared_count}"
-        )
-    retrieved_head_sha = commits[-1]["sha"]
-    if retrieved_head_sha != expected_head_sha:
+
+    final_commits = fetch_pr_commits(
+        api_url,
+        repository,
+        pr_number,
+        token,
+        declared_count,
+        opener=opener,
+    )
+    if final_commits[-1]["sha"] != expected_head_sha:
         raise DcoContractError(
             "pull-request retrieved head mismatch: "
-            f"final commit was {retrieved_head_sha}, expected {expected_head_sha}"
+            f"final commit was {final_commits[-1]['sha']}, "
+            f"expected {expected_head_sha}"
         )
-    return declared_count, commits
+
+    final_count, final_head_sha, final_base_sha = fetch_pr_metadata(
+        api_url,
+        repository,
+        pr_number,
+        token,
+        expected_head_sha,
+        expected_base_sha,
+        opener=opener,
+    )
+    if (
+        final_count != declared_count
+        or final_head_sha != initial_head_sha
+        or final_base_sha != initial_base_sha
+    ):
+        raise DcoContractError(
+            "pull-request metadata drifted during commit retrieval: "
+            "initial base/head/count "
+            f"{initial_base_sha}/{initial_head_sha}/{declared_count}, "
+            "final base/head/count "
+            f"{final_base_sha}/{final_head_sha}/{final_count}"
+        )
+
+    initial_shas = [item["sha"] for item in initial_commits]
+    final_shas = [item["sha"] for item in final_commits]
+    if final_shas != initial_shas:
+        raise DcoContractError(
+            "pull-request commit pagination was not stable across "
+            "complete traversals"
+        )
+    return declared_count, final_commits
 
 
 def _is_horizontal_blank(line: str) -> bool:
@@ -323,6 +396,18 @@ def _is_horizontal_blank(line: str) -> bool:
 def _final_nonblank_group(message: str) -> list[str]:
     """Return the complete final nonblank group after a body boundary."""
     lines = message.split("\n")
+    divider_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.rstrip(' \t') == '---'
+        ),
+        None,
+    )
+    if divider_index is not None:
+        # Git treats the first `---` line, optionally right-padded by spaces or
+        # tabs, as the patch area; trailers there are not in the commit message.
+        lines = lines[:divider_index]
     while lines and _is_horizontal_blank(lines[-1]):
         lines.pop()
     if not lines:
@@ -464,6 +549,7 @@ def main() -> int:
         token = _required_environment("GITHUB_TOKEN")
         pr_number_text = _required_environment("PR_NUMBER")
         expected_head_sha = _required_environment("EXPECTED_HEAD_SHA")
+        expected_base_sha = _required_environment("EXPECTED_BASE_SHA")
         try:
             pr_number = int(pr_number_text)
         except ValueError as exc:
@@ -477,6 +563,7 @@ def main() -> int:
             pr_number,
             token,
             expected_head_sha,
+            expected_base_sha,
         )
         unsigned = unsigned_commit_shas(commits)
         if unsigned:

@@ -18,6 +18,7 @@ API_URL = "https://api.github.test"
 REPOSITORY = "szl-holdings/example"
 PR_NUMBER = 399
 TOKEN = "test-token"
+EXPECTED_BASE_SHA = "f" * 40
 
 
 def _commit(index: int, message: str | None = None) -> dict[str, object]:
@@ -44,8 +45,16 @@ def _head_sha(commits: list[dict[str, object]]) -> str:
     return sha
 
 
-def _metadata(count: int, head_sha: str) -> dict[str, object]:
-    return {"commits": count, "head": {"sha": head_sha}}
+def _metadata(
+    count: int,
+    head_sha: str,
+    base_sha: str = EXPECTED_BASE_SHA,
+) -> dict[str, object]:
+    return {
+        "commits": count,
+        "head": {"sha": head_sha},
+        "base": {"sha": base_sha},
+    }
 
 
 def _density_message(
@@ -89,7 +98,8 @@ def _stable_responses(
     count = len(commits)
     head_sha = _head_sha(commits)
     metadata = _metadata(count, head_sha)
-    return head_sha, [metadata, *_commit_pages(commits), [], metadata]
+    pages = [*_commit_pages(commits), []]
+    return head_sha, [metadata, *pages, metadata, *pages, metadata]
 
 
 UNSIGNED_EMPTY_COMMIT = _commit(1, "chore: intentionally empty commit")
@@ -140,7 +150,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "retrieval failed"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_commits_api_retrieval_failure_fails_closed(self) -> None:
@@ -151,7 +161,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "retrieval failed"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_unexpectedly_empty_commit_list_fails_closed(self) -> None:
@@ -160,7 +170,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "count mismatch"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_unsigned_empty_commit_is_rejected(self) -> None:
@@ -234,6 +244,24 @@ class DcoCheckTests(unittest.TestCase):
         commit = _commit(14, "fix: short signer\n\nSigned-off-by: X <x@example.com>")
 
         self.assertEqual(dco_check.unsigned_commit_shas([commit]), [])
+
+    def test_email_components_reject_additional_at_signs(self) -> None:
+        malformed = [
+            _commit(
+                index,
+                "fix: malformed email\n\n"
+                f"Signed-off-by: Test User <{email}>",
+            )
+            for index, email in enumerate(
+                ("a@@b", "a@b@c", "a@b@"),
+                start=93,
+            )
+        ]
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas(malformed),
+            [commit["sha"] for commit in malformed],
+        )
 
     def test_audited_horizontal_separators_are_accepted(self) -> None:
         separators = (
@@ -377,6 +405,91 @@ class DcoCheckTests(unittest.TestCase):
             dco_check.unsigned_commit_shas(rejected),
             [commit["sha"] for commit in rejected],
         )
+
+    def test_signoff_after_exact_patch_divider_is_rejected(self) -> None:
+        unsigned = _commit(
+            97,
+            "fix: unsigned patch message\n\n"
+            "Body without a sign-off.\n"
+            "---\n"
+            "Signed-off-by: Test User <test@example.com>",
+        )
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas([unsigned]),
+            [unsigned["sha"]],
+        )
+
+    def test_padded_patch_dividers_match_git_trailer_parsing(self) -> None:
+        git = shutil.which("git")
+        if git is None:
+            self.skipTest("git is unavailable for differential fixtures")
+
+        fixtures: list[tuple[str, str, bool]] = []
+        for divider in ("---", "--- ", "---\t", "--- \t"):
+            fixtures.extend(
+                (
+                    (
+                        f"valid sign-off before {divider!r}",
+                        "fix: signed patch message\n\n"
+                        "Signed-off-by: Test User <test@example.com>\n"
+                        f"{divider}\n"
+                        "diff --git a/file b/file\n"
+                        "+patch content",
+                        True,
+                    ),
+                    (
+                        f"sign-off only after {divider!r}",
+                        "fix: unsigned patch message\n\n"
+                        "Body without a sign-off.\n"
+                        f"{divider}\n"
+                        "Signed-off-by: Test User <test@example.com>",
+                        False,
+                    ),
+                )
+            )
+        fixtures.extend(
+            (
+                (
+                    "first divider wins",
+                    "fix: first divider wins\n\n"
+                    "Body without a sign-off.\n"
+                    "--- \t\n"
+                    "Signed-off-by: Test User <test@example.com>\n"
+                    "---\n"
+                    "diff --git a/file b/file",
+                    False,
+                ),
+                (
+                    "leading space is not a divider",
+                    "fix: leading-space non-divider\n\n"
+                    "Reviewed-by: Reviewer <reviewer@example.com>\n"
+                    " ---\n"
+                    "Signed-off-by: Test User <test@example.com>",
+                    True,
+                ),
+            )
+        )
+        for label, message, expected in fixtures:
+            with self.subTest(label=label):
+                parsed = subprocess.run(
+                    [git, "interpret-trailers", "--parse"],
+                    input=message,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                    timeout=5,
+                ).stdout
+                git_accepts = any(
+                    line.lower().startswith("signed-off-by:")
+                    for line in parsed.splitlines()
+                )
+                policy_accepts = not dco_check.unsigned_commit_shas(
+                    [_commit(98, message)]
+                )
+
+                self.assertEqual(git_accepts, expected, parsed)
+                self.assertEqual(policy_accepts, git_accepts)
 
     def test_git_density_admission_boundaries_are_deterministic(self) -> None:
         density_20 = _commit(70, _density_message(4))
@@ -625,6 +738,45 @@ class DcoCheckTests(unittest.TestCase):
 
         self.assertEqual(dco_check.unsigned_commit_shas(signed), [])
 
+    def test_leading_hyphen_generic_trailer_matches_git_with_fold(self) -> None:
+        git = shutil.which("git")
+        if git is None:
+            self.skipTest("git is unavailable for differential fixtures")
+
+        message = (
+            "fix: leading-hyphen generic trailer\n\n"
+            "-Foo: x\n"
+            " folded continuation\n"
+            "Signed-off-by: Test User <test@example.com>"
+        )
+        parsed = subprocess.run(
+            [git, "interpret-trailers", "--parse"],
+            input=message,
+            text=True,
+            capture_output=True,
+            check=True,
+            timeout=5,
+        ).stdout
+
+        self.assertTrue(
+            any(line.startswith("-Foo:") for line in parsed.splitlines()),
+            parsed,
+        )
+        self.assertEqual(
+            dco_check.unsigned_commit_shas([_commit(96, message)]),
+            [],
+        )
+
+    def test_generic_trailer_token_keeps_strict_character_boundary(self) -> None:
+        self.assertIsNotNone(
+            dco_check.TRAILER_TOKEN_FULL_PATTERN.fullmatch("-Foo")
+        )
+        for token in ("-Fo:o", "-Fo o", "-Fo\x1co"):
+            with self.subTest(token=token):
+                self.assertIsNone(
+                    dco_check.TRAILER_TOKEN_FULL_PATTERN.fullmatch(token)
+                )
+
     def test_trailing_blank_line_variants_are_accepted(self) -> None:
         endings = ("", "\n", "\n\n", "\n \t\n")
         signed = [
@@ -645,12 +797,12 @@ class DcoCheckTests(unittest.TestCase):
         opener = _SequenceOpener(*responses)
 
         declared, retrieved = dco_check.fetch_authoritative_pr_commits(
-            API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+            API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
         )
 
         self.assertEqual(declared, 3)
         self.assertEqual(retrieved, commits)
-        self.assertEqual(len(opener.urls), 4)
+        self.assertEqual(len(opener.urls), 7)
 
     def test_249_commits_are_retrieved_completely(self) -> None:
         commits = _signed_commits(249)
@@ -658,7 +810,7 @@ class DcoCheckTests(unittest.TestCase):
         opener = _SequenceOpener(*responses)
 
         declared, retrieved = dco_check.fetch_authoritative_pr_commits(
-            API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+            API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
         )
 
         self.assertEqual(declared, 249)
@@ -671,7 +823,7 @@ class DcoCheckTests(unittest.TestCase):
         opener = _SequenceOpener(*responses)
 
         declared, retrieved = dco_check.fetch_authoritative_pr_commits(
-            API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+            API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
         )
 
         self.assertEqual(declared, 250)
@@ -684,7 +836,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "capped at 250"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
         self.assertEqual(len(opener.urls), 1)
@@ -698,7 +850,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "count mismatch"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_nonempty_boundary_page_count_mismatch_is_rejected(self) -> None:
@@ -710,7 +862,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "count mismatch"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_duplicate_entries_within_page_are_rejected(self) -> None:
@@ -720,7 +872,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "duplicate SHA"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_duplicate_sha_across_pages_is_rejected(self) -> None:
@@ -732,7 +884,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "duplicate SHA"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_initial_metadata_head_mismatch_is_rejected(self) -> None:
@@ -742,7 +894,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "head mismatch"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_same_count_head_replacement_during_pagination_is_rejected(self) -> None:
@@ -758,7 +910,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "head mismatch"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_metadata_count_drift_after_pagination_is_rejected(self) -> None:
@@ -770,7 +922,7 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "metadata drifted"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_final_retrieved_sha_must_equal_expected_head(self) -> None:
@@ -783,7 +935,59 @@ class DcoCheckTests(unittest.TestCase):
 
         with self.assertRaisesRegex(dco_check.DcoContractError, "retrieved head mismatch"):
             dco_check.fetch_authoritative_pr_commits(
-                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, opener=opener
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head, EXPECTED_BASE_SHA, opener=opener
+            )
+
+    def test_initial_metadata_base_mismatch_is_rejected(self) -> None:
+        commits = _signed_commits(2)
+        expected_head = _head_sha(commits)
+        replacement_base = "e" * 40
+        opener = _SequenceOpener(
+            _metadata(2, expected_head, replacement_base)
+        )
+
+        with self.assertRaisesRegex(dco_check.DcoContractError, "base mismatch"):
+            dco_check.fetch_authoritative_pr_commits(
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head,
+                EXPECTED_BASE_SHA, opener=opener
+            )
+
+    def test_base_retarget_during_pagination_is_rejected(self) -> None:
+        commits = _signed_commits(2)
+        expected_head = _head_sha(commits)
+        replacement_base = "e" * 40
+        opener = _SequenceOpener(
+            _metadata(2, expected_head),
+            commits,
+            [],
+            _metadata(2, expected_head, replacement_base),
+        )
+
+        with self.assertRaisesRegex(dco_check.DcoContractError, "base mismatch"):
+            dco_check.fetch_authoritative_pr_commits(
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head,
+                EXPECTED_BASE_SHA, opener=opener
+            )
+
+    def test_hybrid_page_omission_is_rejected(self) -> None:
+        commits = _signed_commits(101)
+        expected_head = _head_sha(commits)
+        hybrid = [*commits[:99], _commit(202), commits[-1]]
+        metadata = _metadata(len(commits), expected_head)
+        opener = _SequenceOpener(
+            metadata,
+            *_commit_pages(hybrid),
+            [],
+            metadata,
+            *_commit_pages(commits),
+            [],
+            metadata,
+        )
+
+        with self.assertRaisesRegex(dco_check.DcoContractError, "not stable"):
+            dco_check.fetch_authoritative_pr_commits(
+                API_URL, REPOSITORY, PR_NUMBER, TOKEN, expected_head,
+                EXPECTED_BASE_SHA, opener=opener
             )
 
     def test_workflow_binds_head_and_has_no_historical_bypass(self) -> None:
@@ -792,6 +996,9 @@ class DcoCheckTests(unittest.TestCase):
 
         self.assertIn(
             "EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}", workflow
+        )
+        self.assertIn(
+            "EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}", workflow
         )
         self.assertRegex(
             workflow,

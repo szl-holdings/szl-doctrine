@@ -46,6 +46,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           POLICY_SHA: ${{ github.workflow_sha }}
         shell: bash
@@ -58,7 +59,10 @@ jobs:
 
   preserve-merge-queue-gate:
     if: github.event_name == 'merge_group'
-    name: Required DCO merge-group continuation
+    # Publish the same required context name consumed by target-repository
+    # merge queues. The protected pull-request run remains the DCO evidence;
+    # this job only carries that already-required decision into admission.
+    name: DCO sign-off check
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
