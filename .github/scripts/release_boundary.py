@@ -450,12 +450,23 @@ def verify_all_active(manifest: dict, api: GitHubAPI) -> dict:
     ]
     if not active:
         raise BoundaryError("no ACTIVE manifest targets exist; final heads are not authorized")
+    pending = sorted(
+        repository
+        for repository, entry in manifest["targets"].items()
+        if entry["state"] == "PENDING"
+    )
     return {
-        "status": "ALL_ACTIVE_MANIFEST_TARGETS_VERIFIED",
+        "status": (
+            "MANIFEST_INCOMPLETE_PENDING_TARGETS"
+            if pending
+            else "ALL_ACTIVE_MANIFEST_TARGETS_VERIFIED"
+        ),
         "targets": [
             verify_manifest_target(manifest, repository, entry["observed_candidate_sha"], api)
             for repository, entry in active
         ],
+        "pending_targets": pending,
+        "authorization_complete": not pending,
     }
 
 
@@ -472,6 +483,7 @@ def main() -> int:
     if modes != 1:
         raise BoundaryError("select exactly one enforcement, manifest, or target verification mode")
     manifest = load_manifest(args.manifest)
+    exit_code = 0
     if args.validate_manifest_only:
         result = {"status": "MANIFEST_STRUCTURALLY_VALID", "active_targets": sorted(name for name, value in manifest["targets"].items() if value["state"] == "ACTIVE"), "pending_targets": sorted(name for name, value in manifest["targets"].items() if value["state"] == "PENDING")}
     else:
@@ -480,6 +492,8 @@ def main() -> int:
             result = verify_manifest_target(manifest, args.verify_target, _exact_sha(args.head_sha, "verification head"), api)
         elif args.verify_all_active:
             result = verify_all_active(manifest, api)
+            if not result["authorization_complete"]:
+                exit_code = 1
         else:
             try:
                 event = json.loads(args.event.read_text(encoding="utf-8"))
@@ -489,7 +503,7 @@ def main() -> int:
                 raise BoundaryError("event payload must be an object")
             result = enforce(manifest, event, api)
     print(json.dumps(result, sort_keys=True))
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

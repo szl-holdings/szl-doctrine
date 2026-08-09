@@ -171,18 +171,33 @@ class BoundaryTests(unittest.TestCase):
         self.entry = self.manifest["targets"][REPOSITORY]
         self.env = {"EVENT_REPOSITORY": REPOSITORY, "EVENT_REPOSITORY_ID": str(REPOSITORY_ID), "EVENT_HEAD_SHA": HEAD, "GITHUB_SHA": HEAD}
 
-    def test_repository_manifest_is_fail_closed_while_heads_move(self) -> None:
+    def test_repository_manifest_has_five_active_static_heads_and_pending_kernel(self) -> None:
         manifest = RB.load_manifest(MANIFEST_PATH)
         self.assertEqual(
-            {name for name, item in manifest["targets"].items() if item["state"] == "PENDING"},
-            set(RB.TARGET_IDS),
+            {name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
+            set(RB.TARGET_IDS) - {"szl-holdings/szl-kernels-live"},
         )
-        for entry in manifest["targets"].values():
-            self.assertIsNone(entry["observed_candidate_sha"])
-            self.assertEqual(set(entry["workflow_files"].values()), {"PENDING"})
-            self.assertEqual(set(entry["secret_execution_files"].values()), {"PENDING"})
+        kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
+        self.assertEqual(kernel["state"], "PENDING")
+        self.assertIsNone(kernel["observed_candidate_sha"])
+        self.assertEqual(set(kernel["workflow_files"].values()), {"PENDING"})
+        self.assertEqual(set(kernel["secret_execution_files"].values()), {"PENDING"})
+        all_pending = copy.deepcopy(self.manifest)
+        active = all_pending["targets"][REPOSITORY]
+        active["state"] = "PENDING"
+        active["observed_candidate_sha"] = None
+        active["pending_reason"] = "fixture pending"
+        active["workflow_files"] = {path: "PENDING" for path in active["workflow_files"]}
+        active["secret_execution_files"] = {path: "PENDING" for path in active["secret_execution_files"]}
         with self.assertRaisesRegex(RB.BoundaryError, "no ACTIVE"):
-            RB.verify_all_active(manifest, FakeAPI())
+            RB.verify_all_active(all_pending, FakeAPI())
+
+    def test_all_active_verification_reports_verified_static_before_pending(self) -> None:
+        result = RB.verify_all_active(self.manifest, FakeAPI())
+        self.assertEqual(result["status"], "MANIFEST_INCOMPLETE_PENDING_TARGETS")
+        self.assertFalse(result["authorization_complete"])
+        self.assertEqual(result["targets"][0]["status"], "MANIFEST_TARGET_VERIFIED")
+        self.assertEqual(len(result["pending_targets"]), 5)
 
     def test_pending_fails_before_api(self) -> None:
         pending = copy.deepcopy(self.manifest)
