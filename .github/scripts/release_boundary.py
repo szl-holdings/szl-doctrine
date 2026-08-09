@@ -304,18 +304,94 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                 module = ast.parse(data.decode("utf-8"))
             except (UnicodeError, SyntaxError) as error:
                 raise BoundaryError("publisher identity Python is malformed") from error
+            governed_names = {
+                "SOURCE_REPO",
+                "SOURCE_REPOSITORY",
+                "HF_REPO",
+                "TARGET",
+            }
             literals = {}
+            allowed_stores = set()
             for node in module.body:
-                if isinstance(node, (ast.Assign, ast.AnnAssign)):
-                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                    for target in targets:
-                        if isinstance(target, ast.Name) and target.id in {"SOURCE_REPO", "SOURCE_REPOSITORY", "HF_REPO", "TARGET"}:
-                            try:
-                                literals[target.id] = ast.literal_eval(node.value)
-                            except (ValueError, TypeError):
-                                # Non-literal identities stay absent and fail the exact check below.
-                                continue
-            if identity["source_repository"] not in literals.values() or identity["target"] not in literals.values():
+                target = None
+                value = None
+                if (
+                    isinstance(node, ast.Assign)
+                    and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)
+                ):
+                    target, value = node.targets[0], node.value
+                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                    target, value = node.target, node.value
+                if target is None or target.id not in governed_names:
+                    continue
+                if target.id in literals or value is None:
+                    raise BoundaryError("publisher Python identity constant is rebound")
+                try:
+                    literals[target.id] = ast.literal_eval(value)
+                except (ValueError, TypeError) as error:
+                    raise BoundaryError(
+                        "publisher Python identity constant is not a literal"
+                    ) from error
+                allowed_stores.add(id(target))
+            for node in ast.walk(module):
+                if (
+                    isinstance(node, ast.Name)
+                    and node.id in governed_names
+                    and isinstance(node.ctx, (ast.Store, ast.Del))
+                    and id(node) not in allowed_stores
+                ):
+                    raise BoundaryError(
+                        "publisher Python identity constant is rebound"
+                    )
+                bound_names = []
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    bound_names.append(node.name)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                    arguments = node.args
+                    bound_names.extend(
+                        argument.arg
+                        for argument in (
+                            list(arguments.posonlyargs)
+                            + list(arguments.args)
+                            + list(arguments.kwonlyargs)
+                        )
+                    )
+                    if arguments.vararg is not None:
+                        bound_names.append(arguments.vararg.arg)
+                    if arguments.kwarg is not None:
+                        bound_names.append(arguments.kwarg.arg)
+                if isinstance(node, (ast.Import, ast.ImportFrom)):
+                    bound_names.extend(
+                        alias.asname or alias.name.split(".", 1)[0]
+                        for alias in node.names
+                    )
+                if isinstance(node, ast.ExceptHandler) and node.name:
+                    bound_names.append(node.name)
+                if isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+                    bound_names.append(node.name)
+                if isinstance(node, ast.MatchMapping) and node.rest:
+                    bound_names.append(node.rest)
+                if any(name in governed_names for name in bound_names):
+                    raise BoundaryError(
+                        "publisher Python identity constant is rebound"
+                    )
+            source_literals = {
+                name: literals[name]
+                for name in ("SOURCE_REPO", "SOURCE_REPOSITORY")
+                if name in literals
+            }
+            target_literals = {
+                name: literals[name]
+                for name in ("HF_REPO", "TARGET")
+                if name in literals
+            }
+            if (
+                not source_literals
+                or any(value != identity["source_repository"] for value in source_literals.values())
+                or not target_literals
+                or any(value != identity["target"] for value in target_literals.values())
+            ):
                 raise BoundaryError("publisher Python identity constants are wrong")
 
 
