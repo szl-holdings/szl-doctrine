@@ -97,7 +97,7 @@
     "szl-holdings/szl-kernels-live": {
       "repository_id": 1295941334,
       "state": "ACTIVE",
-      "observed_candidate_sha": "7e485dcb72e57dd5ba356b95de77a9018e727d10",
+      "observed_candidate_sha": "95e97a1dc90d44482023d7f2a8c8f7baef3af0e3",
       "pending_reason": null,
       "workflow_files": {
         ".github/workflows/hf-space-deploy.yml": "c2ada31948763e43bb05f08c0dbb1a1d646d0060cb59b46c426380da2fc3e64e",
@@ -106,12 +106,12 @@
       "secret_execution_files": {
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
         "scripts/build_hf_space_bundle.py": "90f2d41a356bf4150ce078a6629dc8110f2e8f0789191e1f8b95def4e3c498e7",
-        "scripts/deploy_hf_space.py": "cd9d581006078bc718c84bf69bd4c3d0aead18d8ff28b3823512c3fe2e584629",
+        "scripts/deploy_hf_space.py": "31a6a3f337d797ff86fa6f782577e33d46deb1dd2f9e917e384560b00d6785a7",
         "scripts/kernel_portfolio_truth.mjs": "59ead9dcf02747fe4bab58fa3f78e9f7209dc767de4dedfdfaf3da02300655c3",
         "scripts/snapshot_kernel_contracts.py": "15e5c54b1a17aa3bee2f1d63d0494f5dbc11f73c7100e75415b3c5f798e7edd7",
         "scripts/verify_kernel_registry.py": "651d3da3a64f9180a7d47ebb577e870c6d585c171bfc945f4bdfeb17980a259c",
         "tests/fixtures/hf-static-window-huggingface-injection.html": "50e110935e42b44c4ea82b3544e2089de00a4082635d73931d14af5ab3d9b9de",
-        "tests/test_hf_space_bundle.py": "5ae05c0e78d5ecfb04abab65c885aa2b830c7cf8e1f1d3f050c9533723c409e2",
+        "tests/test_hf_space_bundle.py": "5753941241d071b90b5c0029b3c53af349d3deedcee6a9bcea46abe6a0885917",
         "tests/test_kernel_portfolio_truth.mjs": "7751d55081a2946f56bfec888948c4bf5d5880b96092d53458a92b4f2c55478d",
         "tests/test_kernel_registry.py": "6c8d2827f5f1c37ec353655c46f45100f046cb767da39ab45f9cd3b98bc5957b"
       },
