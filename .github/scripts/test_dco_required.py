@@ -433,6 +433,8 @@ class DcoCheckTests(unittest.TestCase):
             "--- \t",
             "--- patch follows",
             "---\tpatch follows",
+            "---\r",
+            "---\rjunk",
         ):
             fixtures.extend(
                 (
@@ -484,12 +486,11 @@ class DcoCheckTests(unittest.TestCase):
             with self.subTest(label=label):
                 parsed = subprocess.run(
                     [git, "interpret-trailers", "--parse"],
-                    input=message,
-                    text=True,
+                    input=message.encode("utf-8"),
                     capture_output=True,
                     check=True,
                     timeout=5,
-                ).stdout
+                ).stdout.decode("utf-8")
                 git_accepts = any(
                     line.lower().startswith("signed-off-by:")
                     for line in parsed.splitlines()
