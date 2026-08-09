@@ -141,6 +141,28 @@ class DcoCheckTests(unittest.TestCase):
     def test_fully_signed_multi_commit_pr_passes(self) -> None:
         self.assertEqual(dco_check.unsigned_commit_shas(SIGNED_MULTI_COMMIT_PR), [])
 
+    def test_multiline_sign_off_values_are_rejected(self) -> None:
+        malformed = [
+            _commit(5, "fix: split name\n\nSigned-off-by: Test User\n<test@example.com>"),
+            _commit(6, "fix: split trailer\n\nSigned-off-by:\nTest User <test@example.com>"),
+        ]
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas(malformed),
+            [commit["sha"] for commit in malformed],
+        )
+
+    def test_whitespace_only_signer_names_are_rejected(self) -> None:
+        malformed = [
+            _commit(7, "fix: blank name\n\nSigned-off-by:   <test@example.com>"),
+            _commit(8, "fix: tab name\n\nSigned-off-by:\t\t<test@example.com>"),
+        ]
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas(malformed),
+            [commit["sha"] for commit in malformed],
+        )
+
     def test_valid_stable_pagination_passes(self) -> None:
         commits = _signed_commits(3)
         expected_head, responses = _stable_responses(commits)
