@@ -310,6 +310,75 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                 "HF_REPO",
                 "TARGET",
             }
+            dynamic_namespace_names = {
+                "__import__",
+                "compile",
+                "delattr",
+                "eval",
+                "exec",
+                "globals",
+                "locals",
+                "setattr",
+                "vars",
+            }
+
+            def reject_unprovable_namespace() -> None:
+                raise BoundaryError(
+                    "publisher Python identity namespace is not statically provable"
+                )
+
+            def literal_name(node):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    return node.value
+                return None
+
+            def contains_governed_update_key(node) -> bool:
+                for candidate in ast.walk(node):
+                    if isinstance(candidate, ast.Dict) and any(
+                        key is not None and literal_name(key) in governed_names
+                        for key in candidate.keys
+                    ):
+                        return True
+                    if (
+                        isinstance(candidate, (ast.List, ast.Tuple))
+                        and len(candidate.elts) == 2
+                        and literal_name(candidate.elts[0]) in governed_names
+                    ):
+                        return True
+                    if isinstance(candidate, ast.Call) and any(
+                        keyword.arg in governed_names
+                        for keyword in candidate.keywords
+                    ):
+                        return True
+                return False
+
+            def is_dynamic_namespace(node) -> bool:
+                for candidate in ast.walk(node):
+                    if (
+                        isinstance(candidate, ast.Call)
+                        and isinstance(candidate.func, ast.Name)
+                        and candidate.func.id in {"globals", "locals", "vars"}
+                    ):
+                        return True
+                    if (
+                        isinstance(candidate, ast.Attribute)
+                        and candidate.attr in {"__dict__", "modules"}
+                    ):
+                        return True
+                return False
+
+            allowed_primitive_reads = {
+                id(node.func)
+                for node in ast.walk(module)
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "vars"
+                    and len(node.args) == 1
+                    and not node.keywords
+                    and not is_dynamic_namespace(node.args[0])
+                )
+            }
             literals = {}
             allowed_stores = set()
             for node in module.body:
@@ -344,6 +413,121 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     raise BoundaryError(
                         "publisher Python identity constant is rebound"
                     )
+                if (
+                    isinstance(node, ast.Attribute)
+                    and node.attr in governed_names
+                    and isinstance(node.ctx, (ast.Store, ast.Del))
+                ):
+                    raise BoundaryError(
+                        "publisher Python identity constant is rebound"
+                    )
+                if (
+                    isinstance(node, ast.Subscript)
+                    and literal_name(node.slice) in governed_names
+                    and isinstance(node.ctx, (ast.Store, ast.Del))
+                ):
+                    raise BoundaryError(
+                        "publisher Python identity constant is rebound"
+                    )
+                if isinstance(node, ast.ImportFrom) and any(
+                    alias.name == "*" for alias in node.names
+                ):
+                    reject_unprovable_namespace()
+                if isinstance(node, ast.ImportFrom) and any(
+                    alias.name in dynamic_namespace_names for alias in node.names
+                ):
+                    reject_unprovable_namespace()
+                if isinstance(node, ast.Import) and any(
+                    alias.name == "builtins" for alias in node.names
+                ):
+                    reject_unprovable_namespace()
+                if (
+                    isinstance(node, ast.Name)
+                    and node.id in dynamic_namespace_names
+                    and id(node) not in allowed_primitive_reads
+                ):
+                    reject_unprovable_namespace()
+                if (
+                    isinstance(node, ast.Attribute)
+                    and node.attr in dynamic_namespace_names
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "__builtins__"
+                ):
+                    reject_unprovable_namespace()
+                if (
+                    isinstance(node, ast.Subscript)
+                    and literal_name(node.slice) in dynamic_namespace_names
+                ):
+                    reject_unprovable_namespace()
+                if isinstance(node, ast.Call):
+                    call_name = None
+                    call_target = None
+                    if isinstance(node.func, ast.Name):
+                        call_name = node.func.id
+                    elif isinstance(node.func, ast.Attribute):
+                        call_name = node.func.attr
+                        call_target = node.func.value
+                    if call_name == "getattr" and (
+                        any(
+                            literal_name(argument) in dynamic_namespace_names
+                            for argument in node.args[1:]
+                        )
+                        or (
+                            node.args
+                            and (
+                                is_dynamic_namespace(node.args[0])
+                                or (
+                                    isinstance(node.args[0], ast.Name)
+                                    and node.args[0].id in {"builtins", "__builtins__"}
+                                )
+                            )
+                        )
+                    ):
+                        reject_unprovable_namespace()
+                    key_mutators = {
+                        "__delitem__",
+                        "__setitem__",
+                        "pop",
+                        "setdefault",
+                        "update",
+                    }
+                    if call_name in key_mutators:
+                        if call_target is not None and is_dynamic_namespace(call_target):
+                            reject_unprovable_namespace()
+                        if any(
+                            keyword.arg in governed_names
+                            or (
+                                keyword.arg is None
+                                and contains_governed_update_key(keyword.value)
+                            )
+                            for keyword in node.keywords
+                        ):
+                            reject_unprovable_namespace()
+                        if any(
+                            contains_governed_update_key(argument)
+                            for argument in node.args
+                        ):
+                            reject_unprovable_namespace()
+                        if (
+                            call_name
+                            in {"__delitem__", "__setitem__", "pop", "setdefault"}
+                            and node.args
+                            and literal_name(node.args[0]) in governed_names
+                        ):
+                            reject_unprovable_namespace()
+                    if call_name in {"delitem", "setitem"} and (
+                        (node.args and is_dynamic_namespace(node.args[0]))
+                        or (
+                            len(node.args) > 1
+                            and literal_name(node.args[1]) in governed_names
+                        )
+                    ):
+                        reject_unprovable_namespace()
+                    if call_name in {"__delattr__", "__setattr__"} and any(
+                        literal_name(argument) in governed_names
+                        for argument in node.args
+                    ):
+                        reject_unprovable_namespace()
                 bound_names = []
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                     bound_names.append(node.name)

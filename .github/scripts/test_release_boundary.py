@@ -335,6 +335,15 @@ class BoundaryTests(unittest.TestCase):
         ).encode()
         RB._identities(REPOSITORY, contract, {"publisher.py": valid})
 
+        ordinary_reads = valid + (
+            b"publisher_source = SOURCE_REPO\n"
+            b"publisher_target = HF_REPO\n"
+            b"pattern = re.compile(r'^[0-9a-f]{40}$')\n"
+            b"arguments_dict = vars(arguments)\n"
+            b"assert publisher_source and publisher_target\n"
+        )
+        RB._identities(REPOSITORY, contract, {"publisher.py": ordinary_reads})
+
         bypasses = [
             valid + b'HF_REPO = choose_target()\n',
             valid + b'if enabled:\n    HF_REPO = "SZLHOLDINGS/wrong-target"\n',
@@ -343,11 +352,42 @@ class BoundaryTests(unittest.TestCase):
             valid + f'HF_REPO = "{identity["target"]}"\n'.encode(),
             valid + b'import wrong_target as HF_REPO\n',
             valid + b'def operation(HF_REPO):\n    return HF_REPO\n',
+            valid + b'from publisher_defaults import *\n',
+            valid + b'globals()["HF_REPO"] = "wrong"\n',
+            valid + b'del globals()["HF_REPO"]\n',
+            valid + b'globals().update(HF_REPO="wrong")\n',
+            valid + b'globals().update({"HF_REPO": "wrong"})\n',
+            valid + b'sys.modules[__name__].HF_REPO = "wrong"\n',
+            valid + b'del sys.modules[__name__].HF_REPO\n',
+            valid + b'sys.modules[__name__].__dict__["HF_REPO"] = "wrong"\n',
+            valid + b'sys.modules[__name__].__dict__.update(payload)\n',
+            valid + b'setattr(module, "HF_REPO", "wrong")\n',
+            valid + b'delattr(module, "HF_REPO")\n',
+            valid + b'module.__setattr__("HF_REPO", "wrong")\n',
+            valid + b'module.__delattr__("HF_REPO")\n',
+            valid + b'configuration.update(HF_REPO="wrong")\n',
+            valid + b'configuration.update({"HF_REPO": "wrong"})\n',
+            valid + b'configuration.update([("HF_REPO", "wrong")])\n',
+            valid + b'configuration.__setitem__("HF_REPO", "wrong")\n',
+            valid + b'configuration.__delitem__("HF_REPO")\n',
+            valid + b'operator.setitem(configuration, "HF_REPO", "wrong")\n',
+            valid + b'exec("HF_REPO = \\\"wrong\\\"")\n',
+            valid + b'eval("globals().__setitem__(\\\"HF_REPO\\\", \\\"wrong\\\")")\n',
+            valid + b'compiled = compile("HF_REPO = \\\"wrong\\\"", "<publisher>", "exec")\n',
+            valid + b'runner = exec\nrunner("HF_REPO = \\\"wrong\\\"")\n',
+            valid + b'from builtins import exec as runner\nrunner("HF_REPO = \\\"wrong\\\"")\n',
+            valid + b'runner = getattr(__builtins__, "exec")\n',
+            valid + b'runner = __builtins__["exec"]\n',
+            valid + b'namespace = vars()\n',
+            valid + b'namespace_reader = vars\n',
+            valid + b'vars(arguments)["HF_REPO"] = "wrong"\n',
+            valid + b'vars(arguments).update(HF_REPO="wrong")\n',
+            valid + b'vars(sys.modules[__name__]).update(payload)\n',
         ]
         for bypass in bypasses:
             with self.subTest(bypass=bypass), self.assertRaisesRegex(
                 RB.BoundaryError,
-                "rebound|literal",
+                "rebound|literal|statically provable",
             ):
                 RB._identities(REPOSITORY, contract, {"publisher.py": bypass})
 
@@ -378,6 +418,10 @@ class BoundaryTests(unittest.TestCase):
         missing_target = f'SOURCE_REPO = "{REPOSITORY}"\n'.encode()
         with self.assertRaisesRegex(RB.BoundaryError, "identity constants"):
             RB._identities(REPOSITORY, contract, {"publisher.py": missing_target})
+
+        missing_source = f'HF_REPO = "{identity["target"]}"\n'.encode()
+        with self.assertRaisesRegex(RB.BoundaryError, "identity constants"):
+            RB._identities(REPOSITORY, contract, {"publisher.py": missing_source})
 
     def test_boundary_never_executes_target_and_source_workflow_is_pinned(self) -> None:
         tree = ast.parse((HERE / "release_boundary.py").read_text(encoding="utf-8"))
