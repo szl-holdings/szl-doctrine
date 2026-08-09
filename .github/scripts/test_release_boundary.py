@@ -171,17 +171,37 @@ class BoundaryTests(unittest.TestCase):
         self.entry = self.manifest["targets"][REPOSITORY]
         self.env = {"EVENT_REPOSITORY": REPOSITORY, "EVENT_REPOSITORY_ID": str(REPOSITORY_ID), "EVENT_HEAD_SHA": HEAD, "GITHUB_SHA": HEAD}
 
-    def test_repository_manifest_has_five_active_static_heads_and_pending_kernel(self) -> None:
+    def test_repository_manifest_has_six_active_heads(self) -> None:
         manifest = RB.load_manifest(MANIFEST_PATH)
         self.assertEqual(
             {name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
-            set(RB.TARGET_IDS) - {"szl-holdings/szl-kernels-live"},
+            set(RB.TARGET_IDS),
         )
         kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
-        self.assertEqual(kernel["state"], "PENDING")
-        self.assertIsNone(kernel["observed_candidate_sha"])
-        self.assertEqual(set(kernel["workflow_files"].values()), {"PENDING"})
-        self.assertEqual(set(kernel["secret_execution_files"].values()), {"PENDING"})
+        self.assertEqual(kernel["state"], "ACTIVE")
+        self.assertEqual(kernel["observed_candidate_sha"], "3cea443162476e9dce0a24645eb43e79de6b23d3")
+        self.assertIsNone(kernel["pending_reason"])
+        self.assertEqual(
+            set(kernel["workflow_files"]),
+            {".github/workflows/hf-space-deploy.yml", ".github/workflows/kernel-contracts.yml"},
+        )
+        self.assertEqual(
+            set(kernel["secret_execution_files"]),
+            {
+                "requirements/hf-publisher.lock",
+                "scripts/build_hf_space_bundle.py",
+                "scripts/deploy_hf_space.py",
+                "scripts/kernel_portfolio_truth.mjs",
+                "scripts/snapshot_kernel_contracts.py",
+                "scripts/verify_kernel_registry.py",
+                "tests/fixtures/hf-static-window-huggingface-injection.html",
+                "tests/test_hf_space_bundle.py",
+                "tests/test_kernel_portfolio_truth.mjs",
+                "tests/test_kernel_registry.py",
+            },
+        )
+        self.assertTrue(all(RB.HEX64.fullmatch(value) for value in kernel["workflow_files"].values()))
+        self.assertTrue(all(RB.HEX64.fullmatch(value) for value in kernel["secret_execution_files"].values()))
         all_pending = copy.deepcopy(self.manifest)
         active = all_pending["targets"][REPOSITORY]
         active["state"] = "PENDING"
