@@ -17,6 +17,7 @@ COMMITS_PER_PAGE = 100
 MAX_PULL_REQUEST_COMMITS = 250
 REQUEST_TIMEOUT_SECONDS = 30
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+PATCH_DIVIDER_PATTERN = re.compile(r"^---(?:[ \t]|$)")
 
 # Audited horizontal separators: TAB, SPACE, and every Unicode Zs code point.
 # Name and email tokens separately reject C0/C1 controls plus Unicode line and
@@ -400,13 +401,13 @@ def _final_nonblank_group(message: str) -> list[str]:
         (
             index
             for index, line in enumerate(lines)
-            if line.rstrip(' \t') == '---'
+            if PATCH_DIVIDER_PATTERN.match(line) is not None
         ),
         None,
     )
     if divider_index is not None:
-        # Git treats the first `---` line, optionally right-padded by spaces or
-        # tabs, as the patch area; trailers there are not in the commit message.
+        # Git starts the patch area at the first column-zero `---` followed by
+        # space, tab, or end-of-line; trailers there are not in the message.
         lines = lines[:divider_index]
     while lines and _is_horizontal_blank(lines[-1]):
         lines.pop()
