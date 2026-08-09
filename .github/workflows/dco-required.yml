@@ -58,7 +58,10 @@ jobs:
 
   preserve-merge-queue-gate:
     if: github.event_name == 'merge_group'
-    name: Required DCO merge-group continuation
+    # Publish the same required context name consumed by target-repository
+    # merge queues. The protected pull-request run remains the DCO evidence;
+    # this job only carries that already-required decision into admission.
+    name: DCO sign-off check
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
