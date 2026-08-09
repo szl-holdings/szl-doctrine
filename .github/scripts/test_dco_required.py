@@ -420,39 +420,55 @@ class DcoCheckTests(unittest.TestCase):
             [unsigned["sha"]],
         )
 
-    def test_exact_patch_divider_matches_git_trailer_parsing(self) -> None:
+    def test_padded_patch_dividers_match_git_trailer_parsing(self) -> None:
         git = shutil.which("git")
         if git is None:
             self.skipTest("git is unavailable for differential fixtures")
 
-        fixtures = (
+        fixtures: list[tuple[str, str, bool]] = []
+        for divider in ("---", "--- ", "---\t", "--- \t"):
+            fixtures.extend(
+                (
+                    (
+                        f"valid sign-off before {divider!r}",
+                        "fix: signed patch message\n\n"
+                        "Signed-off-by: Test User <test@example.com>\n"
+                        f"{divider}\n"
+                        "diff --git a/file b/file\n"
+                        "+patch content",
+                        True,
+                    ),
+                    (
+                        f"sign-off only after {divider!r}",
+                        "fix: unsigned patch message\n\n"
+                        "Body without a sign-off.\n"
+                        f"{divider}\n"
+                        "Signed-off-by: Test User <test@example.com>",
+                        False,
+                    ),
+                )
+            )
+        fixtures.extend(
             (
-                "valid sign-off before divider",
-                "fix: signed patch message\n\n"
-                "Signed-off-by: Test User <test@example.com>\n"
-                "---\n"
-                "diff --git a/file b/file\n"
-                "+patch content",
-                True,
-            ),
-            (
-                "sign-off only after divider",
-                "fix: unsigned patch message\n\n"
-                "Body without a sign-off.\n"
-                "---\n"
-                "Signed-off-by: Test User <test@example.com>",
-                False,
-            ),
-            (
-                "first divider wins",
-                "fix: first divider wins\n\n"
-                "Body without a sign-off.\n"
-                "---\n"
-                "Signed-off-by: Test User <test@example.com>\n"
-                "---\n"
-                "diff --git a/file b/file",
-                False,
-            ),
+                (
+                    "first divider wins",
+                    "fix: first divider wins\n\n"
+                    "Body without a sign-off.\n"
+                    "--- \t\n"
+                    "Signed-off-by: Test User <test@example.com>\n"
+                    "---\n"
+                    "diff --git a/file b/file",
+                    False,
+                ),
+                (
+                    "leading space is not a divider",
+                    "fix: leading-space non-divider\n\n"
+                    "Reviewed-by: Reviewer <reviewer@example.com>\n"
+                    " ---\n"
+                    "Signed-off-by: Test User <test@example.com>",
+                    True,
+                ),
+            )
         )
         for label, message, expected in fixtures:
             with self.subTest(label=label):
