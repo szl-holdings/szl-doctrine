@@ -48,13 +48,37 @@ def _metadata(count: int, head_sha: str) -> dict[str, object]:
     return {"commits": count, "head": {"sha": head_sha}}
 
 
-def _density_message(body_line_count: int) -> str:
+def _density_message(
+    body_line_count: int,
+    signoff_line: str = "Signed-off-by: Test User <test@example.com>",
+) -> str:
     body = "\n".join(
         f"ordinary body line {index}" for index in range(1, body_line_count + 1)
     )
     return (
         "fix: density boundary\n\n"
         f"{body}\n"
+        f"{signoff_line}"
+    )
+
+
+def _two_trailer_density_message(
+    body_line_count: int,
+    *,
+    include_orphan: bool = False,
+) -> str:
+    body = "\n".join(
+        f"ordinary body line {index}" for index in range(1, body_line_count + 1)
+    )
+    orphan = "\n orphan continuation" if include_orphan else ""
+    return (
+        "fix: continuation density\n\n"
+        f"{body}{orphan}\n"
+        "Reviewed-by: Reviewer <reviewer@example.com>\n"
+        " folded one\n"
+        "\tfolded two\n"
+        " folded three\n"
+        "\tfolded four\n"
         "Signed-off-by: Test User <test@example.com>"
     )
 
@@ -399,6 +423,165 @@ class DcoCheckTests(unittest.TestCase):
 
                 self.assertEqual(git_accepts, expected)
                 self.assertEqual(policy_accepts, git_accepts)
+
+    def test_mixed_group_recognition_requires_exact_git_prefix(self) -> None:
+        variants = {
+            "canonical": (
+                "Signed-off-by: Test User <test@example.com>",
+                (False, True, True),
+                (False, True, True),
+            ),
+            "tab": (
+                "Signed-off-by:\tTest User <test@example.com>",
+                (False, False, False),
+                (False, False, False),
+            ),
+            "nbsp": (
+                "Signed-off-by:\u00a0Test User <test@example.com>",
+                (False, False, False),
+                (False, False, False),
+            ),
+            "lowercase": (
+                "signed-off-by: Test User <test@example.com>",
+                (False, False, False),
+                (False, False, False),
+            ),
+            "uppercase": (
+                "SIGNED-OFF-BY: Test User <test@example.com>",
+                (False, False, False),
+                (False, False, False),
+            ),
+            "malformed": (
+                "Signed-off-by: malformed",
+                (False, True, True),
+                (False, False, False),
+            ),
+        }
+        body_counts = (4, 3, 1)
+
+        for name, (line, admission_results, policy_results) in variants.items():
+            for body_count, admitted, accepted in zip(
+                body_counts,
+                admission_results,
+                policy_results,
+                strict=True,
+            ):
+                with self.subTest(name=name, body_count=body_count):
+                    message = _density_message(body_count, line)
+                    self.assertEqual(
+                        dco_check._admitted_trailer_group(message) is not None,
+                        admitted,
+                    )
+                    policy_accepts = not dco_check.unsigned_commit_shas(
+                        [_commit(80, message)]
+                    )
+                    self.assertEqual(policy_accepts, accepted)
+
+    def test_mixed_group_prefix_admission_matches_interpret_trailers(self) -> None:
+        git = shutil.which("git")
+        if git is None:
+            self.skipTest("git is unavailable for differential fixtures")
+
+        variants = (
+            "Signed-off-by: Test User <test@example.com>",
+            "Signed-off-by:\tTest User <test@example.com>",
+            "Signed-off-by:\u00a0Test User <test@example.com>",
+            "signed-off-by: Test User <test@example.com>",
+            "SIGNED-OFF-BY: Test User <test@example.com>",
+            "Signed-off-by: malformed",
+        )
+        for line in variants:
+            for body_count in (4, 3, 1):
+                with self.subTest(line=line, body_count=body_count):
+                    message = _density_message(body_count, line)
+                    parsed = subprocess.run(
+                        [git, "interpret-trailers", "--parse"],
+                        input=message,
+                        text=True,
+                        capture_output=True,
+                        check=True,
+                        timeout=5,
+                    ).stdout
+                    git_admits = bool(parsed.strip())
+                    policy_admits = (
+                        dco_check._admitted_trailer_group(message) is not None
+                    )
+
+                    self.assertEqual(policy_admits, git_admits)
+
+    def test_project_signoff_variants_pass_in_all_trailer_groups(self) -> None:
+        signoff_lines = (
+            "Signed-off-by:\tTest User <test@example.com>",
+            "Signed-off-by:\u00a0Test User <test@example.com>",
+            "signed-off-by: Test User <test@example.com>",
+            "SIGNED-OFF-BY: Test User <test@example.com>",
+        )
+        signed = [
+            _commit(
+                index,
+                "fix: fully structured trailer group\n\n"
+                "Reviewed-by: Reviewer <reviewer@example.com>\n"
+                f"{line}",
+            )
+            for index, line in enumerate(signoff_lines, start=81)
+        ]
+
+        self.assertEqual(dco_check.unsigned_commit_shas(signed), [])
+
+    def test_density_counters_ignore_attached_continuations(self) -> None:
+        admitted_at_25 = _two_trailer_density_message(6)
+        rejected_below_25 = _two_trailer_density_message(7)
+        rejected_with_orphan = _two_trailer_density_message(
+            6,
+            include_orphan=True,
+        )
+
+        self.assertIsNotNone(
+            dco_check._admitted_trailer_group(admitted_at_25)
+        )
+        self.assertIsNone(
+            dco_check._admitted_trailer_group(rejected_below_25)
+        )
+        self.assertIsNone(
+            dco_check._admitted_trailer_group(rejected_with_orphan)
+        )
+        self.assertEqual(
+            dco_check.unsigned_commit_shas(
+                [
+                    _commit(90, admitted_at_25),
+                    _commit(91, rejected_below_25),
+                    _commit(92, rejected_with_orphan),
+                ]
+            ),
+            [f"{91:040x}", f"{92:040x}"],
+        )
+
+    def test_density_counters_match_interpret_trailers(self) -> None:
+        git = shutil.which("git")
+        if git is None:
+            self.skipTest("git is unavailable for differential fixtures")
+
+        fixtures = (
+            _two_trailer_density_message(6),
+            _two_trailer_density_message(7),
+            _two_trailer_density_message(6, include_orphan=True),
+        )
+        for message in fixtures:
+            with self.subTest(message=message):
+                parsed = subprocess.run(
+                    [git, "interpret-trailers", "--parse"],
+                    input=message,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                    timeout=5,
+                ).stdout
+                git_admits = bool(parsed.strip())
+                policy_admits = (
+                    dco_check._admitted_trailer_group(message) is not None
+                )
+
+                self.assertEqual(policy_admits, git_admits)
 
     def test_complete_group_does_not_discard_malformed_material(self) -> None:
         malformed = [

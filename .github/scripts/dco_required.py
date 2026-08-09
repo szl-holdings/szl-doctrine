@@ -60,9 +60,9 @@ HORIZONTAL_PREFIX_PATTERN = re.compile(
     rf"^{HORIZONTAL_SEPARATOR_PATTERN}"
 )
 
-# Git generates this prefix through `git commit --signoff`. No repository-local
-# trailer configuration is consulted, keeping admission deterministic in CI.
-GIT_RECOGNIZED_TRAILER_TOKENS = frozenset({"signed-off-by"})
+# Git's mixed-group heuristic recognizes this exact generated prefix. Project
+# DCO matching is intentionally broader and is applied only after admission.
+GIT_RECOGNIZED_SIGNOFF_PREFIX = "Signed-off-by: "
 
 
 class DcoContractError(RuntimeError):
@@ -345,23 +345,27 @@ def _final_nonblank_group(message: str) -> list[str]:
     return final_paragraph
 
 
-def has_valid_dco_trailer(message: str) -> bool:
-    """Admit Git-compatible trailers, then apply stricter project DCO rules."""
+def _admitted_trailer_group(
+    message: str,
+) -> list[tuple[str, str | None, str]] | None:
+    """Classify and admit the complete final group using Git's counters."""
     final_group = _final_nonblank_group(message)
     if not final_group:
-        return False
+        return None
 
     classified_lines: list[tuple[str, str | None, str]] = []
     current_token: str | None = None
     trailer_count = 0
-    all_lines_structured = True
+    non_trailer_count = 0
     has_recognized_prefix = False
 
     for line in final_group:
         if CONTINUATION_LINE_PATTERN.fullmatch(line):
             if current_token is None:
-                return False
-            classified_lines.append(("continuation", current_token, line))
+                non_trailer_count += 1
+                classified_lines.append(("orphan-continuation", None, line))
+            else:
+                classified_lines.append(("continuation", current_token, line))
             continue
 
         trailer_match = TRAILER_LINE_PATTERN.fullmatch(line)
@@ -370,7 +374,7 @@ def has_valid_dco_trailer(message: str) -> bool:
             trailer_count += 1
             has_recognized_prefix = (
                 has_recognized_prefix
-                or current_token in GIT_RECOGNIZED_TRAILER_TOKENS
+                or line.startswith(GIT_RECOGNIZED_SIGNOFF_PREFIX)
             )
             classified_lines.append(("trailer", current_token, line))
             continue
@@ -379,17 +383,30 @@ def has_valid_dco_trailer(message: str) -> bool:
             POTENTIAL_TRAILER_LINE_PATTERN.match(line)
             or HORIZONTAL_PREFIX_PATTERN.match(line)
         ):
-            return False
+            current_token = None
+            non_trailer_count += 1
+            classified_lines.append(("malformed", None, line))
+            continue
 
         current_token = None
-        all_lines_structured = False
+        non_trailer_count += 1
         classified_lines.append(("body", None, line))
 
     if trailer_count == 0:
-        return False
-    if not all_lines_structured and (
-        not has_recognized_prefix or trailer_count * 4 < len(final_group)
+        return None
+    if non_trailer_count and (
+        not has_recognized_prefix
+        or trailer_count * 4 < trailer_count + non_trailer_count
     ):
+        return None
+
+    return classified_lines
+
+
+def has_valid_dco_trailer(message: str) -> bool:
+    """Admit Git-compatible trailers, then apply stricter project DCO rules."""
+    classified_lines = _admitted_trailer_group(message)
+    if classified_lines is None:
         return False
 
     found_signed_off_by = False
@@ -398,6 +415,8 @@ def has_valid_dco_trailer(message: str) -> bool:
         if line_kind == "body":
             current_token = None
             continue
+        if line_kind in {"orphan-continuation", "malformed"}:
+            return False
         if line_kind == "continuation":
             if current_token is None or current_token == "signed-off-by":
                 return False
