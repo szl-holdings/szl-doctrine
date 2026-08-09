@@ -34,10 +34,11 @@ EMAIL_PART_PATTERN = (
     r"\u2028\u2029\u202f\u205f\u3000]+"
 )
 SIGNED_OFF_BY_PATTERN = re.compile(
-    rf"^Signed-off-by:{HORIZONTAL_SEPARATOR_PATTERN}+{NAME_TOKEN_PATTERN}"
-    rf"(?:{HORIZONTAL_SEPARATOR_PATTERN}+{NAME_TOKEN_PATTERN})*"
-    rf"{HORIZONTAL_SEPARATOR_PATTERN}+<{EMAIL_PART_PATTERN}@"
-    rf"{EMAIL_PART_PATTERN}>{HORIZONTAL_SEPARATOR_PATTERN}*$",
+    rf"^Signed-off-by:{HORIZONTAL_SEPARATOR_PATTERN}+"
+    rf"(?P<name>{NAME_TOKEN_PATTERN}(?:{HORIZONTAL_SEPARATOR_PATTERN}+"
+    rf"{NAME_TOKEN_PATTERN})*){HORIZONTAL_SEPARATOR_PATTERN}+"
+    rf"<(?P<email>{EMAIL_PART_PATTERN}@{EMAIL_PART_PATTERN})>"
+    rf"{HORIZONTAL_SEPARATOR_PATTERN}*$",
     re.IGNORECASE,
 )
 HORIZONTAL_ONLY_PATTERN = re.compile(
@@ -394,6 +395,22 @@ def _is_horizontal_blank(line: str) -> bool:
     return HORIZONTAL_ONLY_PATTERN.fullmatch(line) is not None
 
 
+def _is_patch_divider(lines: list[str], index: int) -> bool:
+    """Apply the audited physical-line boundary for a Git patch divider."""
+    line = lines[index]
+    if PATCH_DIVIDER_PATTERN.match(line) is None:
+        return False
+    if line != "---":
+        return True
+
+    # split("\n") leaves one terminal empty element for a final line ending;
+    # that is not a physical line following the exact marker. Two line endings
+    # do create a following empty physical line. A terminal exact marker must
+    # remain message text so it cannot erase an invalid final postscript.
+    remaining = lines[index + 1 :]
+    return bool(remaining and remaining != [""])
+
+
 def _final_nonblank_group(message: str) -> list[str]:
     """Return the complete final nonblank group after a body boundary."""
     lines = message.split("\n")
@@ -401,7 +418,7 @@ def _final_nonblank_group(message: str) -> list[str]:
         (
             index
             for index, line in enumerate(lines)
-            if PATCH_DIVIDER_PATTERN.match(line) is not None
+            if _is_patch_divider(lines, index)
         ),
         None,
     )
@@ -489,32 +506,40 @@ def _admitted_trailer_group(
     return classified_lines
 
 
-def has_valid_dco_trailer(message: str) -> bool:
-    """Admit Git-compatible trailers, then apply stricter project DCO rules."""
+def valid_dco_identities(message: str) -> set[tuple[str, str]]:
+    """Return exact identities from a valid physical-line DCO trailer block."""
     classified_lines = _admitted_trailer_group(message)
     if classified_lines is None:
-        return False
+        return set()
 
-    found_signed_off_by = False
+    identities: set[tuple[str, str]] = set()
     current_token = None
     for line_kind, token, line in classified_lines:
         if line_kind == "body":
             current_token = None
             continue
         if line_kind in {"orphan-continuation", "malformed"}:
-            return False
+            return set()
         if line_kind == "continuation":
             if current_token is None or current_token == "signed-off-by":
-                return False
+                return set()
             continue
 
         current_token = token
         if current_token == "signed-off-by":
-            if SIGNED_OFF_BY_PATTERN.fullmatch(line) is None:
-                return False
-            found_signed_off_by = True
+            signoff_match = SIGNED_OFF_BY_PATTERN.fullmatch(line)
+            if signoff_match is None:
+                return set()
+            identities.add(
+                (signoff_match.group("name"), signoff_match.group("email"))
+            )
 
-    return found_signed_off_by
+    return identities
+
+
+def has_valid_dco_trailer(message: str) -> bool:
+    """Admit Git-compatible trailers, then apply stricter project DCO rules."""
+    return bool(valid_dco_identities(message))
 
 
 def unsigned_commit_shas(commits: list[dict[str, Any]]) -> list[str]:
@@ -530,7 +555,15 @@ def unsigned_commit_shas(commits: list[dict[str, Any]]) -> list[str]:
             raise DcoContractError(f"commit entry {index} had an invalid SHA")
         if not isinstance(commit, dict) or not isinstance(commit.get("message"), str):
             raise DcoContractError(f"commit {sha} had no valid commit message")
-        if not has_valid_dco_trailer(commit["message"]):
+        author = commit.get("author")
+        if not isinstance(author, dict):
+            raise DcoContractError(f"commit {sha} had no valid author identity")
+        author_name = author.get("name")
+        author_email = author.get("email")
+        if not isinstance(author_name, str) or not isinstance(author_email, str):
+            raise DcoContractError(f"commit {sha} had no valid author identity")
+        identities = valid_dco_identities(commit["message"])
+        if (author_name, author_email) not in identities:
             unsigned.append(sha)
 
     return unsigned
