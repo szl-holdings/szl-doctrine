@@ -322,6 +322,30 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                 "setattr",
                 "vars",
             }
+            mapping_mutators = {
+                "__delitem__",
+                "__iadd__",
+                "__iand__",
+                "__ifloordiv__",
+                "__ilshift__",
+                "__imatmul__",
+                "__imod__",
+                "__imul__",
+                "__ior__",
+                "__ipow__",
+                "__irshift__",
+                "__isub__",
+                "__itruediv__",
+                "__ixor__",
+                "__setitem__",
+                "clear",
+                "pop",
+                "popitem",
+                "setdefault",
+                "update",
+            }
+            unbound_mutators = {"delitem", "ior", "setitem"}
+            tainted_names = set()
 
             def reject_unprovable_namespace() -> None:
                 raise BoundaryError(
@@ -358,15 +382,89 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     if (
                         isinstance(candidate, ast.Call)
                         and isinstance(candidate.func, ast.Name)
-                        and candidate.func.id in {"globals", "locals", "vars"}
                     ):
-                        return True
+                        if candidate.func.id in {"globals", "locals"}:
+                            return True
+                        if candidate.func.id == "vars":
+                            if (
+                                len(candidate.args) != 1
+                                or candidate.keywords
+                                or is_dynamic_namespace(candidate.args[0])
+                            ):
+                                return True
                     if (
                         isinstance(candidate, ast.Attribute)
                         and candidate.attr in {"__dict__", "modules"}
                     ):
                         return True
+                    if (
+                        isinstance(candidate, ast.Name)
+                        and candidate.id in tainted_names
+                    ):
+                        return True
                 return False
+
+            def assigned_names(target) -> set[str]:
+                if isinstance(target, ast.Name):
+                    return {target.id}
+                if isinstance(target, (ast.List, ast.Tuple)):
+                    return set().union(*(assigned_names(item) for item in target.elts))
+                return set()
+
+            def is_name_binding(target) -> bool:
+                if isinstance(target, ast.Name):
+                    return True
+                if isinstance(target, (ast.List, ast.Tuple)):
+                    return all(is_name_binding(item) for item in target.elts)
+                return False
+
+            def contains_mutator_reference(node) -> bool:
+                return any(
+                    (
+                        isinstance(candidate, ast.Attribute)
+                        and candidate.attr in mapping_mutators | unbound_mutators
+                    )
+                    or (
+                        isinstance(candidate, ast.Name)
+                        and candidate.id in unbound_mutators
+                    )
+                    for candidate in ast.walk(node)
+                )
+
+            changed = True
+            while changed:
+                changed = False
+                for candidate in ast.walk(module):
+                    targets = []
+                    value = None
+                    if isinstance(candidate, ast.Assign):
+                        targets, value = candidate.targets, candidate.value
+                    elif isinstance(candidate, ast.AnnAssign):
+                        targets, value = [candidate.target], candidate.value
+                    elif isinstance(candidate, ast.NamedExpr):
+                        targets, value = [candidate.target], candidate.value
+                    if value is not None and (
+                        is_dynamic_namespace(value)
+                        or contains_mutator_reference(value)
+                    ):
+                        if any(not is_name_binding(target) for target in targets):
+                            reject_unprovable_namespace()
+                        names = set().union(*(assigned_names(target) for target in targets))
+                        if not names.issubset(tainted_names):
+                            tainted_names.update(names)
+                            changed = True
+                    if isinstance(
+                        candidate,
+                        (ast.FunctionDef, ast.AsyncFunctionDef),
+                    ) and any(
+                        isinstance(result, (ast.Return, ast.Yield, ast.YieldFrom))
+                        and result.value is not None
+                        and is_dynamic_namespace(result.value)
+                        for result in ast.walk(candidate)
+                    ):
+                        if candidate.name not in tainted_names:
+                            tainted_names.add(candidate.name)
+                            changed = True
 
             allowed_primitive_reads = {
                 id(node.func)
@@ -493,6 +591,11 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     and literal_name(node.slice) is None
                 ):
                     reject_unprovable_namespace()
+                if (
+                    isinstance(node, ast.AugAssign)
+                    and is_dynamic_namespace(node.target)
+                ):
+                    reject_unprovable_namespace()
                 if isinstance(node, ast.Call):
                     call_name = None
                     call_target = None
@@ -501,6 +604,18 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     elif isinstance(node.func, ast.Attribute):
                         call_name = node.func.attr
                         call_target = node.func.value
+                    if (
+                        isinstance(node.func, ast.Name)
+                        and node.func.id in tainted_names
+                    ):
+                        reject_unprovable_namespace()
+                    if call_target is not None and is_dynamic_namespace(call_target):
+                        reject_unprovable_namespace()
+                    if any(is_dynamic_namespace(argument) for argument in node.args) or any(
+                        is_dynamic_namespace(keyword.value)
+                        for keyword in node.keywords
+                    ):
+                        reject_unprovable_namespace()
                     if call_name == "getattr" and (
                         any(
                             literal_name(argument) in dynamic_namespace_names
@@ -518,14 +633,7 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                         )
                     ):
                         reject_unprovable_namespace()
-                    key_mutators = {
-                        "__delitem__",
-                        "__setitem__",
-                        "pop",
-                        "setdefault",
-                        "update",
-                    }
-                    if call_name in key_mutators:
+                    if call_name in mapping_mutators:
                         if call_target is not None and is_dynamic_namespace(call_target):
                             reject_unprovable_namespace()
                         if any(
@@ -549,7 +657,7 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                             and literal_name(node.args[0]) in governed_names
                         ):
                             reject_unprovable_namespace()
-                    if call_name in {"delitem", "setitem"} and (
+                    if call_name in unbound_mutators and (
                         (node.args and is_dynamic_namespace(node.args[0]))
                         or (
                             len(node.args) > 1
