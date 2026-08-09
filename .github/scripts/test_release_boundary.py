@@ -179,7 +179,7 @@ class BoundaryTests(unittest.TestCase):
         )
         kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
         self.assertEqual(kernel["state"], "ACTIVE")
-        self.assertEqual(kernel["observed_candidate_sha"], "7e485dcb72e57dd5ba356b95de77a9018e727d10")
+        self.assertEqual(kernel["observed_candidate_sha"], "95e97a1dc90d44482023d7f2a8c8f7baef3af0e3")
         self.assertIsNone(kernel["pending_reason"])
         self.assertEqual(
             set(kernel["workflow_files"]),
