@@ -397,12 +397,16 @@ def _final_nonblank_group(message: str) -> list[str]:
     """Return the complete final nonblank group after a body boundary."""
     lines = message.split("\n")
     divider_index = next(
-        (index for index, line in enumerate(lines) if line == "---"),
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.rstrip(' \t') == '---'
+        ),
         None,
     )
     if divider_index is not None:
-        # Git treats the first exact `---` line as the start of the patch area;
-        # trailers in that area are not part of the commit message.
+        # Git treats the first `---` line, optionally right-padded by spaces or
+        # tabs, as the patch area; trailers there are not in the commit message.
         lines = lines[:divider_index]
     while lines and _is_horizontal_blank(lines[-1]):
         lines.pop()
