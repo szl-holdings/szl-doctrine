@@ -340,6 +340,12 @@ class BoundaryTests(unittest.TestCase):
             b"publisher_target = HF_REPO\n"
             b"pattern = re.compile(r'^[0-9a-f]{40}$')\n"
             b"arguments_dict = vars(arguments)\n"
+            b"safe_status = getattr(record, 'status', None)\n"
+            b"safe_module = sys.modules['publisher_helpers']\n"
+            b"safe_settings = {}\n"
+            b"safe_key = 'display'\n"
+            b"safe_settings[safe_key] = 'ok'\n"
+            b"del safe_settings[safe_key]\n"
             b"assert publisher_source and publisher_target\n"
         )
         RB._identities(REPOSITORY, contract, {"publisher.py": ordinary_reads})
@@ -378,6 +384,16 @@ class BoundaryTests(unittest.TestCase):
             valid + b'from builtins import exec as runner\nrunner("HF_REPO = \\\"wrong\\\"")\n',
             valid + b'runner = getattr(__builtins__, "exec")\n',
             valid + b'runner = __builtins__["exec"]\n',
+            valid + b'from builtins import getattr as getter\nrunner = getter(__builtins__, "exec")\n',
+            valid + b'getter = getattr\nrunner = getter(__builtins__, "exec")\n',
+            valid + b'runner = sys.modules["builtins"].exec\n',
+            valid + b'runner = sys.modules["builtins"]["exec"]\n',
+            valid + b'primitive = "ex" + "ec"\nrunner = sys.modules["builtins"][primitive]\n',
+            valid + b'primitive = "ex" + "ec"\nrunner = getattr(sys.modules["builtins"], primitive)\n',
+            valid + b'key = "HF_" + "REPO"\nsys.modules[__name__].__dict__[key] = "wrong"\n',
+            valid + b'key = "HF_" + "REPO"\ndel sys.modules[__name__].__dict__[key]\n',
+            valid + b'key = "HF_" + "REPO"\nglobals()[key] = "wrong"\n',
+            valid + b'key = "HF_" + "REPO"\ndel globals()[key]\n',
             valid + b'namespace = vars()\n',
             valid + b'namespace_reader = vars\n',
             valid + b'vars(arguments)["HF_REPO"] = "wrong"\n',

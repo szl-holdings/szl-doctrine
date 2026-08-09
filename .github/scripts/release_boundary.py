@@ -316,6 +316,7 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                 "delattr",
                 "eval",
                 "exec",
+                "getattr",
                 "globals",
                 "locals",
                 "setattr",
@@ -373,10 +374,28 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                 if (
                     isinstance(node, ast.Call)
                     and isinstance(node.func, ast.Name)
-                    and node.func.id == "vars"
-                    and len(node.args) == 1
-                    and not node.keywords
-                    and not is_dynamic_namespace(node.args[0])
+                    and (
+                        (
+                            node.func.id == "vars"
+                            and len(node.args) == 1
+                            and not node.keywords
+                            and not is_dynamic_namespace(node.args[0])
+                        )
+                        or (
+                            node.func.id == "getattr"
+                            and len(node.args) in {2, 3}
+                            and not node.keywords
+                            and not is_dynamic_namespace(node.args[0])
+                            and not (
+                                isinstance(node.args[0], ast.Name)
+                                and node.args[0].id
+                                in {"builtins", "__builtins__"}
+                            )
+                            and literal_name(node.args[1]) is not None
+                            and literal_name(node.args[1])
+                            not in dynamic_namespace_names
+                        )
+                    )
                 )
             }
             literals = {}
@@ -423,8 +442,11 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     )
                 if (
                     isinstance(node, ast.Subscript)
-                    and literal_name(node.slice) in governed_names
                     and isinstance(node.ctx, (ast.Store, ast.Del))
+                    and (
+                        literal_name(node.slice) in governed_names
+                        or is_dynamic_namespace(node.value)
+                    )
                 ):
                     raise BoundaryError(
                         "publisher Python identity constant is rebound"
@@ -450,13 +472,25 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                 if (
                     isinstance(node, ast.Attribute)
                     and node.attr in dynamic_namespace_names
-                    and isinstance(node.value, ast.Name)
-                    and node.value.id == "__builtins__"
+                    and (
+                        (
+                            isinstance(node.value, ast.Name)
+                            and node.value.id == "__builtins__"
+                        )
+                        or is_dynamic_namespace(node.value)
+                    )
                 ):
                     reject_unprovable_namespace()
                 if (
                     isinstance(node, ast.Subscript)
                     and literal_name(node.slice) in dynamic_namespace_names
+                ):
+                    reject_unprovable_namespace()
+                if (
+                    isinstance(node, ast.Subscript)
+                    and isinstance(node.ctx, ast.Load)
+                    and is_dynamic_namespace(node.value)
+                    and literal_name(node.slice) is None
                 ):
                     reject_unprovable_namespace()
                 if isinstance(node, ast.Call):
