@@ -1,0 +1,65 @@
+name: Required DCO enforcement
+
+# Organization rulesets execute this workflow from the separately protected
+# public szl-doctrine repository. Target pull requests cannot modify this
+# workflow or the checker bytes that it executes.
+on:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: required-dco-${{ github.repository }}-${{ github.event.pull_request.number || github.event.merge_group.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  enforce-pull-request:
+    if: github.event_name == 'pull_request'
+    name: Required DCO enforcement
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout exact protected policy source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: szl-holdings/szl-doctrine
+          ref: ${{ github.workflow_sha }}
+          path: policy
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: .github/scripts/dco_required.py
+          sparse-checkout-cone-mode: false
+
+      - name: Validate every target pull-request commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          POLICY_SHA: ${{ github.workflow_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C policy rev-parse HEAD)" = "$POLICY_SHA"
+          python3 -m py_compile policy/.github/scripts/dco_required.py
+          python3 policy/.github/scripts/dco_required.py
+
+  preserve-merge-queue-gate:
+    if: github.event_name == 'merge_group'
+    name: Required DCO merge-group continuation
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Preserve the already-required pull-request decision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${{ github.event.merge_group.head_sha }}"
+          echo "DCO was enforced on each pull request before merge-queue admission."
