@@ -46,12 +46,23 @@ SAFE_TRAILER_TEXT_PATTERN = (
     r"[^\x00-\x08\x0a-\x1f\x7f-\x9f\u2028\u2029]*"
 )
 TRAILER_LINE_PATTERN = re.compile(
-    rf"^(?P<token>[A-Za-z0-9][A-Za-z0-9-]*):"
+    rf"^(?P<token>[A-Za-z0-9][A-Za-z0-9-]*)[ \t]*:"
     rf"(?P<value>{SAFE_TRAILER_TEXT_PATTERN})$"
 )
 CONTINUATION_LINE_PATTERN = re.compile(
     rf"^{HORIZONTAL_SEPARATOR_PATTERN}+{SAFE_TRAILER_TEXT_PATTERN}$"
 )
+POTENTIAL_TRAILER_LINE_PATTERN = re.compile(
+    rf"^[A-Za-z0-9][A-Za-z0-9-]*(?:{HORIZONTAL_SEPARATOR_PATTERN}|"
+    r"[\x00-\x08\x0a-\x1f\x7f-\x9f\u2028\u2029])*:"
+)
+HORIZONTAL_PREFIX_PATTERN = re.compile(
+    rf"^{HORIZONTAL_SEPARATOR_PATTERN}"
+)
+
+# Git generates this prefix through `git commit --signoff`. No repository-local
+# trailer configuration is consulted, keeping admission deterministic in CI.
+GIT_RECOGNIZED_TRAILER_TOKENS = frozenset({"signed-off-by"})
 
 
 class DcoContractError(RuntimeError):
@@ -309,8 +320,8 @@ def _is_horizontal_blank(line: str) -> bool:
     return HORIZONTAL_ONLY_PATTERN.fullmatch(line) is not None
 
 
-def _final_trailer_region(message: str) -> list[str]:
-    """Return the final contiguous trailer-shaped suffix after a body boundary."""
+def _final_nonblank_group(message: str) -> list[str]:
+    """Return the complete final nonblank group after a body boundary."""
     lines = message.split("\n")
     while lines and _is_horizontal_blank(lines[-1]):
         lines.pop()
@@ -331,37 +342,68 @@ def _final_trailer_region(message: str) -> list[str]:
     final_paragraph = lines[boundary_index + 1 :]
     if not final_paragraph:
         return []
-
-    block_start = 0
-    for index, line in enumerate(final_paragraph):
-        is_trailer = TRAILER_LINE_PATTERN.fullmatch(line) is not None
-        is_continuation = CONTINUATION_LINE_PATTERN.fullmatch(line) is not None
-        if not is_trailer and not is_continuation:
-            block_start = index + 1
-
-    return final_paragraph[block_start:]
+    return final_paragraph
 
 
 def has_valid_dco_trailer(message: str) -> bool:
-    """Validate a one-line sign-off inside the final structured trailer block."""
-    trailer_lines = _final_trailer_region(message)
-    if not trailer_lines:
+    """Admit Git-compatible trailers, then apply stricter project DCO rules."""
+    final_group = _final_nonblank_group(message)
+    if not final_group:
         return False
 
+    classified_lines: list[tuple[str, str | None, str]] = []
     current_token: str | None = None
-    found_signed_off_by = False
+    trailer_count = 0
+    all_lines_structured = True
+    has_recognized_prefix = False
 
-    for line in trailer_lines:
+    for line in final_group:
         if CONTINUATION_LINE_PATTERN.fullmatch(line):
+            if current_token is None:
+                return False
+            classified_lines.append(("continuation", current_token, line))
+            continue
+
+        trailer_match = TRAILER_LINE_PATTERN.fullmatch(line)
+        if trailer_match is not None:
+            current_token = trailer_match.group("token").lower()
+            trailer_count += 1
+            has_recognized_prefix = (
+                has_recognized_prefix
+                or current_token in GIT_RECOGNIZED_TRAILER_TOKENS
+            )
+            classified_lines.append(("trailer", current_token, line))
+            continue
+
+        if (
+            POTENTIAL_TRAILER_LINE_PATTERN.match(line)
+            or HORIZONTAL_PREFIX_PATTERN.match(line)
+        ):
+            return False
+
+        current_token = None
+        all_lines_structured = False
+        classified_lines.append(("body", None, line))
+
+    if trailer_count == 0:
+        return False
+    if not all_lines_structured and (
+        not has_recognized_prefix or trailer_count * 4 < len(final_group)
+    ):
+        return False
+
+    found_signed_off_by = False
+    current_token = None
+    for line_kind, token, line in classified_lines:
+        if line_kind == "body":
+            current_token = None
+            continue
+        if line_kind == "continuation":
             if current_token is None or current_token == "signed-off-by":
                 return False
             continue
 
-        trailer_match = TRAILER_LINE_PATTERN.fullmatch(line)
-        if trailer_match is None:
-            return False
-
-        current_token = trailer_match.group("token").lower()
+        current_token = token
         if current_token == "signed-off-by":
             if SIGNED_OFF_BY_PATTERN.fullmatch(line) is None:
                 return False

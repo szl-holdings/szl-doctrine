@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 from urllib.error import URLError
@@ -44,6 +46,17 @@ def _head_sha(commits: list[dict[str, object]]) -> str:
 
 def _metadata(count: int, head_sha: str) -> dict[str, object]:
     return {"commits": count, "head": {"sha": head_sha}}
+
+
+def _density_message(body_line_count: int) -> str:
+    body = "\n".join(
+        f"ordinary body line {index}" for index in range(1, body_line_count + 1)
+    )
+    return (
+        "fix: density boundary\n\n"
+        f"{body}\n"
+        "Signed-off-by: Test User <test@example.com>"
+    )
 
 
 def _stable_responses(
@@ -313,31 +326,121 @@ class DcoCheckTests(unittest.TestCase):
         )
 
     def test_trailer_block_body_boundaries_match_git_semantics(self) -> None:
-        accepted = _commit(
-            57,
-            "fix: final trailer suffix\n\n"
-            "Body text may precede the final structured suffix.\n"
-            "Signed-off-by: Test User <test@example.com>",
-        )
+        accepted = [
+            _commit(
+                57,
+                "fix: final trailer suffix\n\n"
+                "Body text may precede the final structured suffix.\n"
+                "Signed-off-by: Test User <test@example.com>",
+            ),
+            _commit(
+                59,
+                "fix: admitted body after trailer\n\n"
+                "Signed-off-by: Test User <test@example.com>\n"
+                "Git admits this complete group at fifty percent density.",
+            ),
+        ]
         rejected = [
             _commit(
                 58,
                 "fix: missing boundary\n"
                 "Signed-off-by: Test User <test@example.com>",
             ),
-            _commit(
-                59,
-                "fix: body after trailer\n\n"
-                "Signed-off-by: Test User <test@example.com>\n"
-                "This body line terminates the trailer block.",
-            ),
         ]
 
-        self.assertEqual(dco_check.unsigned_commit_shas([accepted]), [])
+        self.assertEqual(dco_check.unsigned_commit_shas(accepted), [])
         self.assertEqual(
             dco_check.unsigned_commit_shas(rejected),
             [commit["sha"] for commit in rejected],
         )
+
+    def test_git_density_admission_boundaries_are_deterministic(self) -> None:
+        density_20 = _commit(70, _density_message(4))
+        density_25 = _commit(71, _density_message(3))
+        density_50 = _commit(72, _density_message(1))
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas([density_20]),
+            [density_20["sha"]],
+        )
+        self.assertEqual(
+            dco_check.unsigned_commit_shas([density_25, density_50]),
+            [],
+        )
+
+    def test_git_density_admission_matches_interpret_trailers(self) -> None:
+        git = shutil.which("git")
+        if git is None:
+            self.skipTest("git is unavailable for differential fixtures")
+
+        fixtures = (
+            (4, False),
+            (3, True),
+            (1, True),
+        )
+        for body_line_count, expected in fixtures:
+            with self.subTest(body_line_count=body_line_count):
+                message = _density_message(body_line_count)
+                parsed = subprocess.run(
+                    [git, "interpret-trailers", "--parse"],
+                    input=message,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                    timeout=5,
+                ).stdout
+                git_accepts = any(
+                    line.lower().startswith("signed-off-by:")
+                    for line in parsed.splitlines()
+                )
+                policy_accepts = not dco_check.unsigned_commit_shas(
+                    [_commit(73, message)]
+                )
+
+                self.assertEqual(git_accepts, expected)
+                self.assertEqual(policy_accepts, git_accepts)
+
+    def test_complete_group_does_not_discard_malformed_material(self) -> None:
+        malformed = [
+            _commit(
+                74,
+                "fix: malformed generic trailer\n\n"
+                "Reviewed-by: Reviewer\x1cName <reviewer@example.com>\n"
+                "Signed-off-by: Test User <test@example.com>",
+            ),
+            _commit(
+                75,
+                "fix: malformed key spacing\n\n"
+                "Reviewed-by\x1c: Reviewer <reviewer@example.com>\n"
+                "Signed-off-by: Test User <test@example.com>",
+            ),
+        ]
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas(malformed),
+            [commit["sha"] for commit in malformed],
+        )
+
+    def test_generic_key_to_colon_spacing_and_folds_are_accepted(self) -> None:
+        signed = [
+            _commit(
+                76,
+                "fix: spaced trailer before DCO\n\n"
+                "Reviewed-by \t : Reviewer <reviewer@example.com>\n"
+                " first folded value\n"
+                "\tsecond folded value\n"
+                "Signed-off-by: Test User <test@example.com>",
+            ),
+            _commit(
+                77,
+                "fix: spaced trailer after DCO\n\n"
+                "Signed-off-by: Test User <test@example.com>\n"
+                "Reviewed-by\t: Reviewer <reviewer@example.com>\n"
+                " folded value belonging to Reviewed-by",
+            ),
+        ]
+
+        self.assertEqual(dco_check.unsigned_commit_shas(signed), [])
 
     def test_trailing_blank_line_variants_are_accepted(self) -> None:
         endings = ("", "\n", "\n\n", "\n \t\n")
