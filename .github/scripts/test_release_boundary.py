@@ -419,6 +419,8 @@ class BoundaryTests(unittest.TestCase):
             valid + b'module_registry = getattr(sys, "modules")\n',
             valid + b'namespace = function.__globals__\n',
             valid + b'namespace = sys._getframe().f_globals\n',
+            valid + b'import warnings\nkey = "HF_" + "REPO"\nwarnings.__builtins__[key] = "wrong"\n',
+            valid + b'import importlib\nloader = importlib.import_module\nbuiltins_module = loader("builtins")\nrunner = builtins_module.exec\nrunner("HF_REPO = 1")\n',
             valid + b'namespace = vars(record)\n',
             valid + b'key = "HF_" + "REPO"\nsys.modules[__name__].__dict__[key] = "wrong"\n',
             valid + b'key = "HF_" + "REPO"\ndel sys.modules[__name__].__dict__[key]\n',

@@ -412,6 +412,7 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                 return False
 
             forbidden_origin_attributes = {
+                "__builtins__",
                 "__dict__",
                 "__globals__",
                 "f_globals",
@@ -428,7 +429,10 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     reject_unprovable_namespace()
                 if (
                     isinstance(origin, ast.Attribute)
-                    and origin.attr in forbidden_origin_attributes
+                    and (
+                        origin.attr in forbidden_origin_attributes
+                        or origin.attr in dynamic_loader_names
+                    )
                 ):
                     reject_unprovable_namespace()
                 if isinstance(origin, ast.Import) and any(
