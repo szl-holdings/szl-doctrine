@@ -37,8 +37,32 @@ SIGNED_OFF_BY_PATTERN = re.compile(
     rf"(?:{HORIZONTAL_SEPARATOR_PATTERN}+{NAME_TOKEN_PATTERN})*"
     rf"{HORIZONTAL_SEPARATOR_PATTERN}+<{EMAIL_PART_PATTERN}@"
     rf"{EMAIL_PART_PATTERN}>{HORIZONTAL_SEPARATOR_PATTERN}*$",
-    re.IGNORECASE | re.MULTILINE,
+    re.IGNORECASE,
 )
+HORIZONTAL_ONLY_PATTERN = re.compile(
+    rf"^{HORIZONTAL_SEPARATOR_PATTERN}*$"
+)
+SAFE_TRAILER_TEXT_PATTERN = (
+    r"[^\x00-\x08\x0a-\x1f\x7f-\x9f\u2028\u2029]*"
+)
+TRAILER_LINE_PATTERN = re.compile(
+    rf"^(?P<token>[A-Za-z0-9][A-Za-z0-9-]*)[ \t]*:"
+    rf"(?P<value>{SAFE_TRAILER_TEXT_PATTERN})$"
+)
+CONTINUATION_LINE_PATTERN = re.compile(
+    rf"^{HORIZONTAL_SEPARATOR_PATTERN}+{SAFE_TRAILER_TEXT_PATTERN}$"
+)
+POTENTIAL_TRAILER_LINE_PATTERN = re.compile(
+    rf"^[A-Za-z0-9][A-Za-z0-9-]*(?:{HORIZONTAL_SEPARATOR_PATTERN}|"
+    r"[\x00-\x08\x0a-\x1f\x7f-\x9f\u2028\u2029])*:"
+)
+HORIZONTAL_PREFIX_PATTERN = re.compile(
+    rf"^{HORIZONTAL_SEPARATOR_PATTERN}"
+)
+
+# Git's mixed-group heuristic recognizes this exact generated prefix. Project
+# DCO matching is intentionally broader and is applied only after admission.
+GIT_RECOGNIZED_SIGNOFF_PREFIX = "Signed-off-by: "
 
 
 class DcoContractError(RuntimeError):
@@ -291,6 +315,122 @@ def fetch_authoritative_pr_commits(
     return declared_count, commits
 
 
+def _is_horizontal_blank(line: str) -> bool:
+    """Return whether a physical line is blank under the audited grammar."""
+    return HORIZONTAL_ONLY_PATTERN.fullmatch(line) is not None
+
+
+def _final_nonblank_group(message: str) -> list[str]:
+    """Return the complete final nonblank group after a body boundary."""
+    lines = message.split("\n")
+    while lines and _is_horizontal_blank(lines[-1]):
+        lines.pop()
+    if not lines:
+        return []
+
+    boundary_index = next(
+        (
+            index
+            for index in range(len(lines) - 1, -1, -1)
+            if _is_horizontal_blank(lines[index])
+        ),
+        None,
+    )
+    if boundary_index is None:
+        return []
+
+    final_paragraph = lines[boundary_index + 1 :]
+    if not final_paragraph:
+        return []
+    return final_paragraph
+
+
+def _admitted_trailer_group(
+    message: str,
+) -> list[tuple[str, str | None, str]] | None:
+    """Classify and admit the complete final group using Git's counters."""
+    final_group = _final_nonblank_group(message)
+    if not final_group:
+        return None
+
+    classified_lines: list[tuple[str, str | None, str]] = []
+    current_token: str | None = None
+    trailer_count = 0
+    non_trailer_count = 0
+    has_recognized_prefix = False
+
+    for line in final_group:
+        if CONTINUATION_LINE_PATTERN.fullmatch(line):
+            if current_token is None:
+                non_trailer_count += 1
+                classified_lines.append(("orphan-continuation", None, line))
+            else:
+                classified_lines.append(("continuation", current_token, line))
+            continue
+
+        trailer_match = TRAILER_LINE_PATTERN.fullmatch(line)
+        if trailer_match is not None:
+            current_token = trailer_match.group("token").lower()
+            trailer_count += 1
+            has_recognized_prefix = (
+                has_recognized_prefix
+                or line.startswith(GIT_RECOGNIZED_SIGNOFF_PREFIX)
+            )
+            classified_lines.append(("trailer", current_token, line))
+            continue
+
+        if (
+            POTENTIAL_TRAILER_LINE_PATTERN.match(line)
+            or HORIZONTAL_PREFIX_PATTERN.match(line)
+        ):
+            current_token = None
+            non_trailer_count += 1
+            classified_lines.append(("malformed", None, line))
+            continue
+
+        current_token = None
+        non_trailer_count += 1
+        classified_lines.append(("body", None, line))
+
+    if trailer_count == 0:
+        return None
+    if non_trailer_count and (
+        not has_recognized_prefix
+        or trailer_count * 4 < trailer_count + non_trailer_count
+    ):
+        return None
+
+    return classified_lines
+
+
+def has_valid_dco_trailer(message: str) -> bool:
+    """Admit Git-compatible trailers, then apply stricter project DCO rules."""
+    classified_lines = _admitted_trailer_group(message)
+    if classified_lines is None:
+        return False
+
+    found_signed_off_by = False
+    current_token = None
+    for line_kind, token, line in classified_lines:
+        if line_kind == "body":
+            current_token = None
+            continue
+        if line_kind in {"orphan-continuation", "malformed"}:
+            return False
+        if line_kind == "continuation":
+            if current_token is None or current_token == "signed-off-by":
+                return False
+            continue
+
+        current_token = token
+        if current_token == "signed-off-by":
+            if SIGNED_OFF_BY_PATTERN.fullmatch(line) is None:
+                return False
+            found_signed_off_by = True
+
+    return found_signed_off_by
+
+
 def unsigned_commit_shas(commits: list[dict[str, Any]]) -> list[str]:
     """Return every commit that lacks a syntactically valid DCO trailer."""
     unsigned: list[str] = []
@@ -304,7 +444,7 @@ def unsigned_commit_shas(commits: list[dict[str, Any]]) -> list[str]:
             raise DcoContractError(f"commit entry {index} had an invalid SHA")
         if not isinstance(commit, dict) or not isinstance(commit.get("message"), str):
             raise DcoContractError(f"commit {sha} had no valid commit message")
-        if not SIGNED_OFF_BY_PATTERN.search(commit["message"]):
+        if not has_valid_dco_trailer(commit["message"]):
             unsigned.append(sha)
 
     return unsigned
