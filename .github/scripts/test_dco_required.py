@@ -299,6 +299,9 @@ class DcoCheckTests(unittest.TestCase):
             workflow,
             r"(?m)^\s*python3\s+policy/\.github/scripts/dco_required\.py\s*$",
         )
+        self.assertIn(".github/workflows/dco-required.yml", workflow)
+        self.assertNotIn("ready_for_review", workflow)
+        self.assertNotIn("The active ruleset requires this workflow", workflow)
         forbidden_patterns = (
             r"(?i)\bfile_count\b",
             r"(?i)\bchanged_files\b",

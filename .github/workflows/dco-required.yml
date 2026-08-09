@@ -5,7 +5,7 @@ name: Required DCO enforcement
 # workflow or the checker bytes that it executes.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
   merge_group:
 
 permissions:
@@ -39,6 +39,7 @@ jobs:
           sparse-checkout: |
             .github/scripts/dco_required.py
             .github/scripts/test_dco_required.py
+            .github/workflows/dco-required.yml
           sparse-checkout-cone-mode: false
 
       - name: Validate every target pull-request commit
@@ -66,5 +67,5 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${{ github.event.merge_group.head_sha }}"
-          echo "The active ruleset requires this workflow on every exact PR head before queue admission."
-          echo "This merge-group run preserves that mandatory admission decision; Evaluate mode must witness the queue path before activation."
+          echo "This merge-group run is an admission continuation, not independent DCO evidence."
+          echo "Activate enforcement only after Evaluate mode has witnessed both pull-request and merge-group execution."
