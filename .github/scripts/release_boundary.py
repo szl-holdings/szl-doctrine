@@ -415,6 +415,7 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                 "__builtins__",
                 "__dict__",
                 "__globals__",
+                "f_builtins",
                 "f_globals",
                 "f_locals",
                 "modules",
@@ -424,19 +425,41 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                 "import_module",
                 "load_module",
             }
+            dynamic_constructor_names = {
+                "BuiltinImporter",
+                "create_module",
+                "find_spec",
+            }
+            dangerous_deserializer_modules = {
+                "_pickle",
+                "cloudpickle",
+                "dill",
+                "joblib",
+                "marshal",
+                "pickle",
+                "shelve",
+            }
+            forbidden_origin_attribute_names = (
+                forbidden_origin_attributes
+                | dynamic_loader_names
+                | dynamic_constructor_names
+            )
             for origin in ast.walk(module):
                 if isinstance(origin, ast.Name) and origin.id == "__builtins__":
                     reject_unprovable_namespace()
                 if (
                     isinstance(origin, ast.Attribute)
-                    and (
-                        origin.attr in forbidden_origin_attributes
-                        or origin.attr in dynamic_loader_names
-                    )
+                    and origin.attr in forbidden_origin_attribute_names
                 ):
                     reject_unprovable_namespace()
                 if isinstance(origin, ast.Import) and any(
                     alias.name in {"__main__", "builtins"}
+                    for alias in origin.names
+                ):
+                    reject_unprovable_namespace()
+                if isinstance(origin, ast.Import) and any(
+                    alias.name.split(".", 1)[0]
+                    in dangerous_deserializer_modules
                     for alias in origin.names
                 ):
                     reject_unprovable_namespace()
@@ -445,6 +468,19 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     or (
                         origin.module == "sys"
                         and any(alias.name == "modules" for alias in origin.names)
+                    )
+                ):
+                    reject_unprovable_namespace()
+                if isinstance(origin, ast.ImportFrom) and (
+                    (
+                        isinstance(origin.module, str)
+                        and origin.module.split(".", 1)[0]
+                        in dangerous_deserializer_modules
+                    )
+                    or any(
+                        alias.name
+                        in dynamic_loader_names | dynamic_constructor_names
+                        for alias in origin.names
                     )
                 ):
                     reject_unprovable_namespace()
@@ -463,7 +499,7 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                     if origin_call_name == "getattr" and (
                         len(origin.args) < 2
                         or literal_name(origin.args[1])
-                        in forbidden_origin_attributes
+                        in forbidden_origin_attribute_names
                     ):
                         reject_unprovable_namespace()
 
