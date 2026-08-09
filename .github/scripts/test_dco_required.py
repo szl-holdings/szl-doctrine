@@ -406,6 +406,75 @@ class DcoCheckTests(unittest.TestCase):
             [commit["sha"] for commit in rejected],
         )
 
+    def test_signoff_after_exact_patch_divider_is_rejected(self) -> None:
+        unsigned = _commit(
+            97,
+            "fix: unsigned patch message\n\n"
+            "Body without a sign-off.\n"
+            "---\n"
+            "Signed-off-by: Test User <test@example.com>",
+        )
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas([unsigned]),
+            [unsigned["sha"]],
+        )
+
+    def test_exact_patch_divider_matches_git_trailer_parsing(self) -> None:
+        git = shutil.which("git")
+        if git is None:
+            self.skipTest("git is unavailable for differential fixtures")
+
+        fixtures = (
+            (
+                "valid sign-off before divider",
+                "fix: signed patch message\n\n"
+                "Signed-off-by: Test User <test@example.com>\n"
+                "---\n"
+                "diff --git a/file b/file\n"
+                "+patch content",
+                True,
+            ),
+            (
+                "sign-off only after divider",
+                "fix: unsigned patch message\n\n"
+                "Body without a sign-off.\n"
+                "---\n"
+                "Signed-off-by: Test User <test@example.com>",
+                False,
+            ),
+            (
+                "first divider wins",
+                "fix: first divider wins\n\n"
+                "Body without a sign-off.\n"
+                "---\n"
+                "Signed-off-by: Test User <test@example.com>\n"
+                "---\n"
+                "diff --git a/file b/file",
+                False,
+            ),
+        )
+        for label, message, expected in fixtures:
+            with self.subTest(label=label):
+                parsed = subprocess.run(
+                    [git, "interpret-trailers", "--parse"],
+                    input=message,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                    timeout=5,
+                ).stdout
+                git_accepts = any(
+                    line.lower().startswith("signed-off-by:")
+                    for line in parsed.splitlines()
+                )
+                policy_accepts = not dco_check.unsigned_commit_shas(
+                    [_commit(98, message)]
+                )
+
+                self.assertEqual(git_accepts, expected, parsed)
+                self.assertEqual(policy_accepts, git_accepts)
+
     def test_git_density_admission_boundaries_are_deterministic(self) -> None:
         density_20 = _commit(70, _density_message(4))
         density_25 = _commit(71, _density_message(3))
