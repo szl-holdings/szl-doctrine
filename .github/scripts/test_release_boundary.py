@@ -321,6 +321,48 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(RB.BoundaryError, "isolated"):
             RB.verify_candidate(FakeAPI(changed), REPOSITORY, HEAD, entry)
 
+    def test_python_identities_bind_source_and_target_constant_groups(self) -> None:
+        identity = {
+            "kind": "python_constants",
+            "path": "publisher.py",
+            "source_repository": REPOSITORY,
+            "target": "SZLHOLDINGS/lambda-gate-holo",
+        }
+        contract = {"identities": [identity]}
+        valid = (
+            f'SOURCE_REPO = "{REPOSITORY}"\n'
+            f'HF_REPO = "{identity["target"]}"\n'
+        ).encode()
+        RB._identities(REPOSITORY, contract, {"publisher.py": valid})
+
+        misdirected_target = (
+            f'SOURCE_REPO = "{REPOSITORY}"\n'
+            'HF_REPO = "SZLHOLDINGS/wrong-target"\n'
+            f'TARGET = "{identity["target"]}"\n'
+        ).encode()
+        with self.assertRaisesRegex(RB.BoundaryError, "identity constants"):
+            RB._identities(
+                REPOSITORY,
+                contract,
+                {"publisher.py": misdirected_target},
+            )
+
+        misdirected_source = (
+            'SOURCE_REPOSITORY = "szl-holdings/wrong-source"\n'
+            f'SOURCE_REPO = "{REPOSITORY}"\n'
+            f'HF_REPO = "{identity["target"]}"\n'
+        ).encode()
+        with self.assertRaisesRegex(RB.BoundaryError, "identity constants"):
+            RB._identities(
+                REPOSITORY,
+                contract,
+                {"publisher.py": misdirected_source},
+            )
+
+        missing_target = f'SOURCE_REPO = "{REPOSITORY}"\n'.encode()
+        with self.assertRaisesRegex(RB.BoundaryError, "identity constants"):
+            RB._identities(REPOSITORY, contract, {"publisher.py": missing_target})
+
     def test_boundary_never_executes_target_and_source_workflow_is_pinned(self) -> None:
         tree = ast.parse((HERE / "release_boundary.py").read_text(encoding="utf-8"))
         forbidden = {"subprocess", "importlib", "runpy"}

@@ -315,7 +315,22 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                             except (ValueError, TypeError):
                                 # Non-literal identities stay absent and fail the exact check below.
                                 continue
-            if identity["source_repository"] not in literals.values() or identity["target"] not in literals.values():
+            source_literals = {
+                name: literals[name]
+                for name in ("SOURCE_REPO", "SOURCE_REPOSITORY")
+                if name in literals
+            }
+            target_literals = {
+                name: literals[name]
+                for name in ("HF_REPO", "TARGET")
+                if name in literals
+            }
+            if (
+                not source_literals
+                or any(value != identity["source_repository"] for value in source_literals.values())
+                or not target_literals
+                or any(value != identity["target"] for value in target_literals.values())
+            ):
                 raise BoundaryError("publisher Python identity constants are wrong")
 
 
