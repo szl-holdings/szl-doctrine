@@ -5,6 +5,7 @@ name: Required DCO enforcement
 # workflow or the checker bytes that it executes.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
 
 permissions:
