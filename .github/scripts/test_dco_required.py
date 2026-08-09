@@ -231,6 +231,128 @@ class DcoCheckTests(unittest.TestCase):
 
         self.assertEqual(dco_check.unsigned_commit_shas(signed), [])
 
+    def test_preceding_folded_non_dco_trailers_are_accepted(self) -> None:
+        signed = [
+            _commit(
+                50,
+                "fix: reviewed change\n\n"
+                "Reviewed-by: Reviewer <reviewer@example.com>\n"
+                " review context\n"
+                "Signed-off-by: Test User <test@example.com>",
+            ),
+            _commit(
+                51,
+                "fix: co-authored change\n\n"
+                "Co-authored-by: Contributor <contributor@example.com>\n"
+                " first continuation\n"
+                "\tsecond continuation\n"
+                "Signed-off-by: Test User <test@example.com>",
+            ),
+        ]
+
+        self.assertEqual(dco_check.unsigned_commit_shas(signed), [])
+
+    def test_body_signoff_outside_final_trailer_block_is_rejected(self) -> None:
+        malformed = _commit(
+            52,
+            "fix: body signoff\n\n"
+            "Signed-off-by: Test User <test@example.com>\n\n"
+            "A final body paragraph is not a trailer block.",
+        )
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas([malformed]),
+            [malformed["sha"]],
+        )
+
+    def test_continuation_after_signed_off_by_is_rejected(self) -> None:
+        malformed = _commit(
+            53,
+            "fix: folded identity\n\n"
+            "Signed-off-by: Test User <test@example.com>\n"
+            " attacker-controlled identity extension",
+        )
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas([malformed]),
+            [malformed["sha"]],
+        )
+
+    def test_folded_signoff_name_or_email_is_rejected(self) -> None:
+        malformed = [
+            _commit(
+                54,
+                "fix: folded name\n\n"
+                "Signed-off-by: Test\n"
+                " User <test@example.com>",
+            ),
+            _commit(
+                55,
+                "fix: folded email\n\n"
+                "Signed-off-by: Test User <test@\n"
+                " example.com>",
+            ),
+        ]
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas(malformed),
+            [commit["sha"] for commit in malformed],
+        )
+
+    def test_orphan_continuation_in_trailer_region_is_rejected(self) -> None:
+        malformed = _commit(
+            56,
+            "fix: orphan continuation\n\n"
+            " continuation without a preceding trailer\n"
+            "Signed-off-by: Test User <test@example.com>",
+        )
+
+        self.assertEqual(
+            dco_check.unsigned_commit_shas([malformed]),
+            [malformed["sha"]],
+        )
+
+    def test_trailer_block_body_boundaries_match_git_semantics(self) -> None:
+        accepted = _commit(
+            57,
+            "fix: final trailer suffix\n\n"
+            "Body text may precede the final structured suffix.\n"
+            "Signed-off-by: Test User <test@example.com>",
+        )
+        rejected = [
+            _commit(
+                58,
+                "fix: missing boundary\n"
+                "Signed-off-by: Test User <test@example.com>",
+            ),
+            _commit(
+                59,
+                "fix: body after trailer\n\n"
+                "Signed-off-by: Test User <test@example.com>\n"
+                "This body line terminates the trailer block.",
+            ),
+        ]
+
+        self.assertEqual(dco_check.unsigned_commit_shas([accepted]), [])
+        self.assertEqual(
+            dco_check.unsigned_commit_shas(rejected),
+            [commit["sha"] for commit in rejected],
+        )
+
+    def test_trailing_blank_line_variants_are_accepted(self) -> None:
+        endings = ("", "\n", "\n\n", "\n \t\n")
+        signed = [
+            _commit(
+                index,
+                "fix: trailing blanks\n\n"
+                "Signed-off-by: Test User <test@example.com>"
+                f"{ending}",
+            )
+            for index, ending in enumerate(endings, start=60)
+        ]
+
+        self.assertEqual(dco_check.unsigned_commit_shas(signed), [])
+
     def test_valid_stable_pagination_passes(self) -> None:
         commits = _signed_commits(3)
         expected_head, responses = _stable_responses(commits)

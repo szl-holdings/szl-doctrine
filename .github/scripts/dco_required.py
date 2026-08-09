@@ -37,7 +37,20 @@ SIGNED_OFF_BY_PATTERN = re.compile(
     rf"(?:{HORIZONTAL_SEPARATOR_PATTERN}+{NAME_TOKEN_PATTERN})*"
     rf"{HORIZONTAL_SEPARATOR_PATTERN}+<{EMAIL_PART_PATTERN}@"
     rf"{EMAIL_PART_PATTERN}>{HORIZONTAL_SEPARATOR_PATTERN}*$",
-    re.IGNORECASE | re.MULTILINE,
+    re.IGNORECASE,
+)
+HORIZONTAL_ONLY_PATTERN = re.compile(
+    rf"^{HORIZONTAL_SEPARATOR_PATTERN}*$"
+)
+SAFE_TRAILER_TEXT_PATTERN = (
+    r"[^\x00-\x08\x0a-\x1f\x7f-\x9f\u2028\u2029]*"
+)
+TRAILER_LINE_PATTERN = re.compile(
+    rf"^(?P<token>[A-Za-z0-9][A-Za-z0-9-]*):"
+    rf"(?P<value>{SAFE_TRAILER_TEXT_PATTERN})$"
+)
+CONTINUATION_LINE_PATTERN = re.compile(
+    rf"^{HORIZONTAL_SEPARATOR_PATTERN}+{SAFE_TRAILER_TEXT_PATTERN}$"
 )
 
 
@@ -291,6 +304,72 @@ def fetch_authoritative_pr_commits(
     return declared_count, commits
 
 
+def _is_horizontal_blank(line: str) -> bool:
+    """Return whether a physical line is blank under the audited grammar."""
+    return HORIZONTAL_ONLY_PATTERN.fullmatch(line) is not None
+
+
+def _final_trailer_region(message: str) -> list[str]:
+    """Return the final contiguous trailer-shaped suffix after a body boundary."""
+    lines = message.split("\n")
+    while lines and _is_horizontal_blank(lines[-1]):
+        lines.pop()
+    if not lines:
+        return []
+
+    boundary_index = next(
+        (
+            index
+            for index in range(len(lines) - 1, -1, -1)
+            if _is_horizontal_blank(lines[index])
+        ),
+        None,
+    )
+    if boundary_index is None:
+        return []
+
+    final_paragraph = lines[boundary_index + 1 :]
+    if not final_paragraph:
+        return []
+
+    block_start = 0
+    for index, line in enumerate(final_paragraph):
+        is_trailer = TRAILER_LINE_PATTERN.fullmatch(line) is not None
+        is_continuation = CONTINUATION_LINE_PATTERN.fullmatch(line) is not None
+        if not is_trailer and not is_continuation:
+            block_start = index + 1
+
+    return final_paragraph[block_start:]
+
+
+def has_valid_dco_trailer(message: str) -> bool:
+    """Validate a one-line sign-off inside the final structured trailer block."""
+    trailer_lines = _final_trailer_region(message)
+    if not trailer_lines:
+        return False
+
+    current_token: str | None = None
+    found_signed_off_by = False
+
+    for line in trailer_lines:
+        if CONTINUATION_LINE_PATTERN.fullmatch(line):
+            if current_token is None or current_token == "signed-off-by":
+                return False
+            continue
+
+        trailer_match = TRAILER_LINE_PATTERN.fullmatch(line)
+        if trailer_match is None:
+            return False
+
+        current_token = trailer_match.group("token").lower()
+        if current_token == "signed-off-by":
+            if SIGNED_OFF_BY_PATTERN.fullmatch(line) is None:
+                return False
+            found_signed_off_by = True
+
+    return found_signed_off_by
+
+
 def unsigned_commit_shas(commits: list[dict[str, Any]]) -> list[str]:
     """Return every commit that lacks a syntactically valid DCO trailer."""
     unsigned: list[str] = []
@@ -304,7 +383,7 @@ def unsigned_commit_shas(commits: list[dict[str, Any]]) -> list[str]:
             raise DcoContractError(f"commit entry {index} had an invalid SHA")
         if not isinstance(commit, dict) or not isinstance(commit.get("message"), str):
             raise DcoContractError(f"commit {sha} had no valid commit message")
-        if not SIGNED_OFF_BY_PATTERN.search(commit["message"]):
+        if not has_valid_dco_trailer(commit["message"]):
             unsigned.append(sha)
 
     return unsigned
