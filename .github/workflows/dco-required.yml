@@ -19,7 +19,8 @@ concurrency:
 jobs:
   enforce-pull-request:
     if: github.event_name == 'pull_request'
-    name: Required DCO enforcement
+    # This exact context is required by the target repository ruleset.
+    name: DCO sign-off check
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

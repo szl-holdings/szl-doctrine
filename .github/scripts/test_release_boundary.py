@@ -34,23 +34,25 @@ on:
     branches: [main]
 permissions:
   contents: read
+  id-token: write
+  attestations: write
 concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
     name: publish-exact-protected-main
     timeout-minutes: 20
+    env:
+      PUBLISHER_PYTHON: python
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
-        with:
-          private-key: ${{ secrets.QILLQAQ_PRIVATE_KEY }}
-          repositories: ${{ github.event.repository.name }}
-          permission-administration: read
-          permission-contents: read
       - run: python -I -m venv "$RUNNER_TEMP/venv"
       - run: pip install --require-hashes --only-binary=:all: -r requirements/hf-publisher.lock
+      - name: Reauthorize exact governed main without HF credentials
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: test -n "$GITHUB_TOKEN"
       - env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: "$PUBLISHER_PYTHON" -I scripts/hf_static_space.py
@@ -90,7 +92,7 @@ def manifest_fixture() -> dict:
             "protected_execution_roots": ["scripts"],
             "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I scripts/hf_static_space.py",
             "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": REPOSITORY, "target": "SZLHOLDINGS/lambda-gate-holo"}],
-            "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "QILLQAQ_PRIVATE_KEY", "HF_TOKEN", "permission-administration: read", "permission-contents: read", "repositories: ${{ github.event.repository.name }}", "python -I -m venv", "--require-hashes", "--only-binary=:all:", "publish-exact-protected-main"],
+            "required_workflow_markers": ["on:", "push:", "branches: [main]", "permissions:", "contents: read", "id-token: write", "attestations: write", "concurrency:", "cancel-in-progress: false", "GITHUB_TOKEN: ${{ github.token }}", "PUBLISHER_PYTHON: python", "Reauthorize exact governed main without HF credentials", "HF_TOKEN", "python -I -m venv", "--require-hashes", "--only-binary=:all:", "publish-exact-protected-main"],
             "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "authorization = require_governed_main", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path"],
         },
     }
@@ -179,7 +181,39 @@ class BoundaryTests(unittest.TestCase):
         )
         kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
         self.assertEqual(kernel["state"], "ACTIVE")
-        self.assertEqual(kernel["observed_candidate_sha"], "dd0e106b5c78e7bfb901a28f3f61088d4ee368a9")
+        self.assertEqual(
+            {
+                name: item["observed_candidate_sha"]
+                for name, item in manifest["targets"].items()
+            },
+            {
+                "szl-holdings/energy-attest-holo": "9d2685daaef16c023236783016c1530428ac4fca",
+                "szl-holdings/governed-norm-holo": "7a8ff3a6a2926e1b9924bec44007186abdb8e3ea",
+                "szl-holdings/lambda-gate-holo": "a30bdd9cf7cbf5467363530c2a81dd762bd6a09e",
+                "szl-holdings/receipt-chain-live": "16d0ce2d076f4c5dcb9170aeb340912d579c5de4",
+                "szl-holdings/szl-kernels-live": "dcb9f4237dbb32bf6b0f74fa8673fec7e7537494",
+                "szl-holdings/szl-provctl-live": "bb6920536e9b9acc5791dae7ad9cc89a984ba2fb",
+            },
+        )
+        for name, item in manifest["targets"].items():
+            markers = set(item["publisher_contract"]["required_workflow_markers"])
+            if name == "szl-holdings/szl-kernels-live":
+                self.assertIn("GOVERNANCE_TOKEN: ${{ github.token }}", markers)
+                self.assertIn("Reauthorize exact protected main before credential use", markers)
+                self.assertIn("timeout-minutes: 60", markers)
+                self.assertIn("$((started_at + 3300))", markers)
+                self.assertIn("max_pre_mutation_seconds=900", markers)
+                self.assertIn("operation_remaining < 1800", markers)
+                self.assertIn("id: deployment-failure-receipt", markers)
+                self.assertNotIn("timeout-minutes: 90", markers)
+                self.assertNotIn("id: deployment-failure-json", markers)
+            else:
+                self.assertIn("GITHUB_TOKEN: ${{ github.token }}", markers)
+                self.assertIn("PUBLISHER_PYTHON: python", markers)
+                self.assertIn("Reauthorize exact governed main without HF credentials", markers)
+            self.assertNotIn("QILLQAQ_PRIVATE_KEY", markers)
+            self.assertNotIn("permission-administration: read", markers)
+            self.assertNotIn("actions/create-github-app-token@", "\n".join(markers))
         self.assertIsNone(kernel["pending_reason"])
         self.assertEqual(
             set(kernel["workflow_files"]),
@@ -378,6 +412,53 @@ class BoundaryTests(unittest.TestCase):
         missing_target = f'SOURCE_REPO = "{REPOSITORY}"\n'.encode()
         with self.assertRaisesRegex(RB.BoundaryError, "identity constants"):
             RB._identities(REPOSITORY, contract, {"publisher.py": missing_target})
+
+    def test_native_governance_contract_fails_closed(self) -> None:
+        workflow_path = ".github/workflows/hf-static-space.yml"
+        baseline = blob_values()
+        RB._publisher_contract(REPOSITORY, self.entry, baseline)
+
+        for marker in RB.LEGACY_GOVERNANCE_CREDENTIAL_MARKERS:
+            altered = dict(baseline)
+            altered[workflow_path] = (WORKFLOW + f"\n# {marker}\n").encode()
+            with self.subTest(marker=marker), self.assertRaisesRegex(
+                RB.BoundaryError, "legacy privileged governance credential"
+            ):
+                RB._publisher_contract(REPOSITORY, self.entry, altered)
+
+        secret_alias = dict(baseline)
+        secret_alias[workflow_path] = WORKFLOW.replace(
+            "GITHUB_TOKEN: ${{ github.token }}",
+            "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+        ).encode()
+        with self.assertRaisesRegex(
+            RB.BoundaryError, "legacy privileged governance credential"
+        ):
+            RB._publisher_contract(REPOSITORY, self.entry, secret_alias)
+
+        missing_guard = dict(baseline)
+        missing_guard[workflow_path] = WORKFLOW.replace(
+            "Reauthorize exact governed main without HF credentials",
+            "Untrusted delayed readback",
+        ).encode()
+        with self.assertRaisesRegex(
+            RB.BoundaryError, "does not bind native governance reauthorization"
+        ):
+            RB._publisher_contract(REPOSITORY, self.entry, missing_guard)
+
+        guard_block = """      - name: Reauthorize exact governed main without HF credentials
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: test -n "$GITHUB_TOKEN"
+"""
+        delayed_guard = dict(baseline)
+        delayed_guard[workflow_path] = (
+            WORKFLOW.replace(guard_block, "") + guard_block
+        ).encode()
+        with self.assertRaisesRegex(
+            RB.BoundaryError, "not ordered before the HF secret"
+        ):
+            RB._publisher_contract(REPOSITORY, self.entry, delayed_guard)
 
     def test_boundary_never_executes_target_and_source_workflow_is_pinned(self) -> None:
         tree = ast.parse((HERE / "release_boundary.py").read_text(encoding="utf-8"))

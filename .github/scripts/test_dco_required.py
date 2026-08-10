@@ -1246,6 +1246,20 @@ class DcoCheckTests(unittest.TestCase):
         self.assertLess(workflow.index(compile_command), workflow.index(test_command))
         self.assertLess(workflow.index(test_command), workflow.index(enforce_command))
         self.assertIn(".github/workflows/dco-required.yml", workflow)
+        pull_request_job = workflow.index("  enforce-pull-request:")
+        merge_group_job = workflow.index("  preserve-merge-queue-gate:")
+        self.assertLess(pull_request_job, merge_group_job)
+        self.assertEqual(
+            workflow[pull_request_job:merge_group_job].count(
+                "name: DCO sign-off check"
+            ),
+            1,
+        )
+        self.assertEqual(
+            workflow[merge_group_job:].count("name: DCO sign-off check"),
+            1,
+        )
+        self.assertNotIn("\n    name: Required DCO enforcement\n", workflow)
         self.assertNotIn("ready_for_review", workflow)
         self.assertNotIn("The active ruleset requires this workflow", workflow)
         forbidden_patterns = (

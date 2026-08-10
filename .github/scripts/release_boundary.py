@@ -32,7 +32,23 @@ ANY_USES = re.compile(
     r"^\s*(?:-\s+)?uses:\s*([^\s#]+)(?:\s+#.*)?$", re.MULTILINE
 )
 PINNED_USES = re.compile(r"^([^@\s]+)@([0-9a-f]{40})$")
-APP_TOKEN_ACTION = "actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1"
+NATIVE_GOVERNANCE_TOKEN_BINDINGS = (
+    "GITHUB_TOKEN: ${{ github.token }}",
+    "GOVERNANCE_TOKEN: ${{ github.token }}",
+)
+GOVERNANCE_REAUTHORIZATION_STEPS = (
+    "Reauthorize exact governed main without HF credentials",
+    "Reauthorize exact protected main before credential use",
+)
+LEGACY_GOVERNANCE_CREDENTIAL_MARKERS = (
+    "actions/create-github-app-token@",
+    "QILLQAQ_CLIENT_ID",
+    "QILLQAQ_PRIVATE_KEY",
+    "permission-administration:",
+    "permission-contents:",
+    "steps.governance-token.outputs.token",
+    "secrets.GITHUB_TOKEN",
+)
 REGULAR_MODES = {"100644", "100755"}
 MAX_TREE_ENTRIES = 20000
 MAX_BLOB_BYTES = 4 * 1024 * 1024
@@ -406,13 +422,25 @@ def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -
     uses = ANY_USES.findall(workflow)
     if not uses or any(value.startswith("./") or PINNED_USES.fullmatch(value) is None for value in uses):
         raise BoundaryError("publisher workflow contains an unpinned or local action")
-    if APP_TOKEN_ACTION not in uses:
-        raise BoundaryError("governance App token action is not pinned to the approved SHA")
-    if workflow.count("permission-administration: read") != 1 or workflow.count("permission-contents: read") != 1 or "permission-actions:" in workflow or "secrets: inherit" in workflow:
-        raise BoundaryError("governance App token permissions are not exact")
-    app_at, private_at, hf_at = workflow.find(APP_TOKEN_ACTION), workflow.find("QILLQAQ_PRIVATE_KEY"), workflow.find("HF_TOKEN")
-    if app_at < 0 or private_at < app_at or hf_at <= private_at:
-        raise BoundaryError("governance token is not ordered before the HF secret")
+    if any(marker in workflow for marker in LEGACY_GOVERNANCE_CREDENTIAL_MARKERS):
+        raise BoundaryError("publisher workflow retains a legacy privileged governance credential")
+    if "permission-actions:" in workflow or "secrets: inherit" in workflow:
+        raise BoundaryError("publisher workflow expands permissions or inherits secrets")
+    native_positions = [
+        workflow.find(binding)
+        for binding in NATIVE_GOVERNANCE_TOKEN_BINDINGS
+        if binding in workflow
+    ]
+    guards = [
+        step for step in GOVERNANCE_REAUTHORIZATION_STEPS if step in workflow
+    ]
+    hf_at = workflow.find("HF_TOKEN")
+    if len(guards) != 1 or not native_positions or hf_at < 0:
+        raise BoundaryError("publisher workflow does not bind native governance reauthorization")
+    guard_at = workflow.find(guards[0])
+    native_at = min(native_positions)
+    if not guard_at < native_at < hf_at:
+        raise BoundaryError("native governance reauthorization is not ordered before the HF secret")
     if contract["isolated_invocation"] not in workflow:
         raise BoundaryError("publisher invocation is not isolated from repository modules")
     for marker in contract["required_workflow_markers"]:
