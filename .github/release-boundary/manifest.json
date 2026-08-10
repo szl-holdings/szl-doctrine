@@ -5,13 +5,14 @@
     "szl-holdings/energy-attest-holo": {
       "repository_id": 1295929955,
       "state": "ACTIVE",
-      "observed_candidate_sha": "1016a8917e94e93d17e9e82db5c883287a3c30df",
+      "observed_candidate_sha": "3a11fc31c44a14341f7189b019a21bca4ddfb7b8",
       "pending_reason": null,
-      "workflow_files": {".github/workflows/hf-static-space.yml": "59f1c8f9b459a6dccdfbf17e53e39235fcc0b540095b920cf962e70aea3edbaf"},
+      "workflow_files": {".github/workflows/hf-static-space.yml": "41aaa268234d5d89ae05b27dd12d95e0b5add9979397122cb7164a7de79ffe30"},
       "secret_execution_files": {
         ".hf-space.json": "1819b0cd12e8defb8c81bcb267461ce5b5e35ab980b6c80c3d22a3e55785714b",
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "1a27b90536cc017bbf39ee23c57aa61c13d3aac820ae68407807ff649c58b03b"
+        "requirements/hf-validator.lock": "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
+        "scripts/hf_static_space.py": "290b5cb3021e60a16e352935db38697f54dfdc23dcbff4eeb44b1cc2c907d4b8"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -21,20 +22,21 @@
         "protected_execution_roots": ["scripts"],
         "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
         "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": "szl-holdings/energy-attest-holo", "target": "SZLHOLDINGS/energy-attest-holo"}],
-        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "Authorize the exact governed merge without HF credentials", "permissions: {}", "GITHUB_TOKEN: \"\"", "GH_TOKEN: \"\"", "HF_TOKEN: ${{ secrets.HF_TOKEN }}", "Measure public bytes and reauthorize current main without HF credentials", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json", "Require terminal governed success"],
-        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "schema\": \"szl.github-governed-merge/v1", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "governance_authorization", "publisher_environment", "measurement_evidence_upload", "receipt_minted"]
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "Authorize the exact governed merge without HF credentials", "permissions: {}", "GITHUB_TOKEN: \"\"", "GH_TOKEN: \"\"", "HF_TOKEN: ${{ secrets.HF_TOKEN }}", "Measure public bytes and reauthorize current main without HF credentials", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json", "include-hidden-files: true", "needs.authorize.result == 'success'", "authorization-evidence-outcome", "mkdir -p \"$RUNNER_TEMP/publication-evidence\"", "timeout-minutes: 20", "steps.publisher-evidence-download.outcome == 'success'", "--publisher-evidence-download-outcome", "--measurement-evidence-download-outcome", "Require terminal governed success"],
+        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "schema\": \"szl.github-governed-merge/v2", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "governance_authorization", "governance_authorization_evidence", "publisher_environment", "publisher_evidence_download", "measurement_evidence_upload", "measurement_evidence_download", "receipt_minted"]
       }
     },
     "szl-holdings/governed-norm-holo": {
       "repository_id": 1295931607,
       "state": "ACTIVE",
-      "observed_candidate_sha": "864a9fd73135fd5fa683b5074bca50e0cddde365",
+      "observed_candidate_sha": "34161d0a968a077950b5aac3f8dd01349eada19d",
       "pending_reason": null,
-      "workflow_files": {".github/workflows/hf-static-space.yml": "59f1c8f9b459a6dccdfbf17e53e39235fcc0b540095b920cf962e70aea3edbaf"},
+      "workflow_files": {".github/workflows/hf-static-space.yml": "41aaa268234d5d89ae05b27dd12d95e0b5add9979397122cb7164a7de79ffe30"},
       "secret_execution_files": {
         ".hf-space.json": "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "1a27b90536cc017bbf39ee23c57aa61c13d3aac820ae68407807ff649c58b03b"
+        "requirements/hf-validator.lock": "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
+        "scripts/hf_static_space.py": "290b5cb3021e60a16e352935db38697f54dfdc23dcbff4eeb44b1cc2c907d4b8"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -44,20 +46,21 @@
         "protected_execution_roots": ["scripts"],
         "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
         "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": "szl-holdings/governed-norm-holo", "target": "SZLHOLDINGS/governed-norm-holo"}],
-        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "Authorize the exact governed merge without HF credentials", "permissions: {}", "GITHUB_TOKEN: \"\"", "GH_TOKEN: \"\"", "HF_TOKEN: ${{ secrets.HF_TOKEN }}", "Measure public bytes and reauthorize current main without HF credentials", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json", "Require terminal governed success"],
-        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "schema\": \"szl.github-governed-merge/v1", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "governance_authorization", "publisher_environment", "measurement_evidence_upload", "receipt_minted"]
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "Authorize the exact governed merge without HF credentials", "permissions: {}", "GITHUB_TOKEN: \"\"", "GH_TOKEN: \"\"", "HF_TOKEN: ${{ secrets.HF_TOKEN }}", "Measure public bytes and reauthorize current main without HF credentials", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json", "include-hidden-files: true", "needs.authorize.result == 'success'", "authorization-evidence-outcome", "mkdir -p \"$RUNNER_TEMP/publication-evidence\"", "timeout-minutes: 20", "steps.publisher-evidence-download.outcome == 'success'", "--publisher-evidence-download-outcome", "--measurement-evidence-download-outcome", "Require terminal governed success"],
+        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "schema\": \"szl.github-governed-merge/v2", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "governance_authorization", "governance_authorization_evidence", "publisher_environment", "publisher_evidence_download", "measurement_evidence_upload", "measurement_evidence_download", "receipt_minted"]
       }
     },
     "szl-holdings/lambda-gate-holo": {
       "repository_id": 1295931629,
       "state": "ACTIVE",
-      "observed_candidate_sha": "0d6d90218a33db0103bfa2e158bbc68294497f27",
+      "observed_candidate_sha": "5d1aa069e719d4d6ad4dbe46b3f3ca4ec0d3c1f7",
       "pending_reason": null,
-      "workflow_files": {".github/workflows/hf-static-space.yml": "59f1c8f9b459a6dccdfbf17e53e39235fcc0b540095b920cf962e70aea3edbaf"},
+      "workflow_files": {".github/workflows/hf-static-space.yml": "41aaa268234d5d89ae05b27dd12d95e0b5add9979397122cb7164a7de79ffe30"},
       "secret_execution_files": {
         ".hf-space.json": "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "1a27b90536cc017bbf39ee23c57aa61c13d3aac820ae68407807ff649c58b03b"
+        "requirements/hf-validator.lock": "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
+        "scripts/hf_static_space.py": "290b5cb3021e60a16e352935db38697f54dfdc23dcbff4eeb44b1cc2c907d4b8"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -67,20 +70,21 @@
         "protected_execution_roots": ["scripts"],
         "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
         "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": "szl-holdings/lambda-gate-holo", "target": "SZLHOLDINGS/lambda-gate-holo"}],
-        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "Authorize the exact governed merge without HF credentials", "permissions: {}", "GITHUB_TOKEN: \"\"", "GH_TOKEN: \"\"", "HF_TOKEN: ${{ secrets.HF_TOKEN }}", "Measure public bytes and reauthorize current main without HF credentials", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json", "Require terminal governed success"],
-        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "schema\": \"szl.github-governed-merge/v1", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "governance_authorization", "publisher_environment", "measurement_evidence_upload", "receipt_minted"]
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "Authorize the exact governed merge without HF credentials", "permissions: {}", "GITHUB_TOKEN: \"\"", "GH_TOKEN: \"\"", "HF_TOKEN: ${{ secrets.HF_TOKEN }}", "Measure public bytes and reauthorize current main without HF credentials", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json", "include-hidden-files: true", "needs.authorize.result == 'success'", "authorization-evidence-outcome", "mkdir -p \"$RUNNER_TEMP/publication-evidence\"", "timeout-minutes: 20", "steps.publisher-evidence-download.outcome == 'success'", "--publisher-evidence-download-outcome", "--measurement-evidence-download-outcome", "Require terminal governed success"],
+        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "schema\": \"szl.github-governed-merge/v2", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "governance_authorization", "governance_authorization_evidence", "publisher_environment", "publisher_evidence_download", "measurement_evidence_upload", "measurement_evidence_download", "receipt_minted"]
       }
     },
     "szl-holdings/receipt-chain-live": {
       "repository_id": 1295940016,
       "state": "ACTIVE",
-      "observed_candidate_sha": "e9b9c11441fb487bc83d45e7b27288ef5b3151a1",
+      "observed_candidate_sha": "2c098c2a844a0d079bdd03f60c7461f6c570b8fd",
       "pending_reason": null,
-      "workflow_files": {".github/workflows/hf-static-space.yml": "59f1c8f9b459a6dccdfbf17e53e39235fcc0b540095b920cf962e70aea3edbaf"},
+      "workflow_files": {".github/workflows/hf-static-space.yml": "41aaa268234d5d89ae05b27dd12d95e0b5add9979397122cb7164a7de79ffe30"},
       "secret_execution_files": {
         ".hf-space.json": "4fc85a455d2ea0bb7222c166df55e663eb20cceb9caedf245373402dcd5f024e",
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "1a27b90536cc017bbf39ee23c57aa61c13d3aac820ae68407807ff649c58b03b"
+        "requirements/hf-validator.lock": "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
+        "scripts/hf_static_space.py": "290b5cb3021e60a16e352935db38697f54dfdc23dcbff4eeb44b1cc2c907d4b8"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -90,8 +94,8 @@
         "protected_execution_roots": ["scripts"],
         "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
         "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": "szl-holdings/receipt-chain-live", "target": "SZLHOLDINGS/receipt-chain-live"}],
-        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "Authorize the exact governed merge without HF credentials", "permissions: {}", "GITHUB_TOKEN: \"\"", "GH_TOKEN: \"\"", "HF_TOKEN: ${{ secrets.HF_TOKEN }}", "Measure public bytes and reauthorize current main without HF credentials", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json", "Require terminal governed success"],
-        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "schema\": \"szl.github-governed-merge/v1", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "governance_authorization", "publisher_environment", "measurement_evidence_upload", "receipt_minted"]
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "Authorize the exact governed merge without HF credentials", "permissions: {}", "GITHUB_TOKEN: \"\"", "GH_TOKEN: \"\"", "HF_TOKEN: ${{ secrets.HF_TOKEN }}", "Measure public bytes and reauthorize current main without HF credentials", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json", "include-hidden-files: true", "needs.authorize.result == 'success'", "authorization-evidence-outcome", "mkdir -p \"$RUNNER_TEMP/publication-evidence\"", "timeout-minutes: 20", "steps.publisher-evidence-download.outcome == 'success'", "--publisher-evidence-download-outcome", "--measurement-evidence-download-outcome", "Require terminal governed success"],
+        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "schema\": \"szl.github-governed-merge/v2", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "governance_authorization", "governance_authorization_evidence", "publisher_environment", "publisher_evidence_download", "measurement_evidence_upload", "measurement_evidence_download", "receipt_minted"]
       }
     },
     "szl-holdings/szl-kernels-live": {
@@ -133,13 +137,14 @@
     "szl-holdings/szl-provctl-live": {
       "repository_id": 1295941247,
       "state": "ACTIVE",
-      "observed_candidate_sha": "36bdfed75b8812fb8d0ed873d3fbd6a4ed855fa3",
+      "observed_candidate_sha": "0eb174685ee0dd09f1105e2300c698c3fa40b38a",
       "pending_reason": null,
-      "workflow_files": {".github/workflows/hf-static-space.yml": "59f1c8f9b459a6dccdfbf17e53e39235fcc0b540095b920cf962e70aea3edbaf"},
+      "workflow_files": {".github/workflows/hf-static-space.yml": "41aaa268234d5d89ae05b27dd12d95e0b5add9979397122cb7164a7de79ffe30"},
       "secret_execution_files": {
         ".hf-space.json": "24f23b8e01c6d53f82b387de9041d735007a78f175cf523dcefbca198ba193a4",
         "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-        "scripts/hf_static_space.py": "1a27b90536cc017bbf39ee23c57aa61c13d3aac820ae68407807ff649c58b03b"
+        "requirements/hf-validator.lock": "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
+        "scripts/hf_static_space.py": "290b5cb3021e60a16e352935db38697f54dfdc23dcbff4eeb44b1cc2c907d4b8"
       },
       "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
       "publisher_contract": {
@@ -149,8 +154,8 @@
         "protected_execution_roots": ["scripts"],
         "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
         "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": "szl-holdings/szl-provctl-live", "target": "SZLHOLDINGS/szl-provctl-live"}],
-        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "Authorize the exact governed merge without HF credentials", "permissions: {}", "GITHUB_TOKEN: \"\"", "GH_TOKEN: \"\"", "HF_TOKEN: ${{ secrets.HF_TOKEN }}", "Measure public bytes and reauthorize current main without HF credentials", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json", "Require terminal governed success"],
-        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "schema\": \"szl.github-governed-merge/v1", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "governance_authorization", "publisher_environment", "measurement_evidence_upload", "receipt_minted"]
+        "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "Authorize the exact governed merge without HF credentials", "permissions: {}", "GITHUB_TOKEN: \"\"", "GH_TOKEN: \"\"", "HF_TOKEN: ${{ secrets.HF_TOKEN }}", "Measure public bytes and reauthorize current main without HF credentials", "Attest canonical exact-revision measurement with GitHub OIDC", "subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json", "include-hidden-files: true", "needs.authorize.result == 'success'", "authorization-evidence-outcome", "mkdir -p \"$RUNNER_TEMP/publication-evidence\"", "timeout-minutes: 20", "steps.publisher-evidence-download.outcome == 'success'", "--publisher-evidence-download-outcome", "--measurement-evidence-download-outcome", "Require terminal governed success"],
+        "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "schema\": \"szl.github-governed-merge/v2", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "governance_authorization", "governance_authorization_evidence", "publisher_environment", "publisher_evidence_download", "measurement_evidence_upload", "measurement_evidence_download", "receipt_minted"]
       }
     }
   }

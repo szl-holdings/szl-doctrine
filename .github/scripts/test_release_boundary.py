@@ -40,11 +40,13 @@ concurrency:
 jobs:
   validate:
     name: validate-static-space
+    timeout-minutes: 10
     steps:
       - name: Validate
         run: echo validated
   dco:
     name: DCO
+    timeout-minutes: 10
     steps:
       - name: Check DCO
         run: echo checked
@@ -57,6 +59,13 @@ jobs:
       checks: read
       contents: read
       pull-requests: read
+    timeout-minutes: 10
+    outputs:
+      authorization-outcome: ${{ steps.authorization.outcome }}
+      authorization-evidence-outcome: ${{ steps.authorization-evidence.outcome }}
+      bundle-outcome: ${{ steps.bundle.outcome }}
+      publisher-input-outcome: ${{ steps.publisher-input.outcome }}
+      publisher-input-evidence-outcome: ${{ steps.publisher-input-evidence.outcome }}
     steps:
       - name: Authorize the exact governed merge without HF credentials
         env:
@@ -71,21 +80,35 @@ jobs:
             --output "$RUNNER_TEMP/governed-merge.json" \
             --failure-output "$RUNNER_TEMP/governed-merge-failure.json"
       - name: Upload exact publisher input
+        id: publisher-input-evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: hf-static-space-publisher-input-${{ github.sha }}
           path: ${{ runner.temp }}/publisher-input
+          include-hidden-files: true
+      - name: Upload governed-merge authorization evidence
+        id: authorization-evidence
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hf-static-space-authorization-${{ github.sha }}
   deploy:
     name: publish-exact-protected-main
-    if: always() && needs.authorize.outputs.authorization-outcome == 'success' && needs.authorize.outputs.publisher-input-evidence-outcome == 'success'
+    if: always() && needs.authorize.result == 'success' && needs.authorize.outputs.authorization-outcome == 'success' && needs.authorize.outputs.authorization-evidence-outcome == 'success' && needs.authorize.outputs.publisher-input-evidence-outcome == 'success'
     needs: [authorize]
     permissions: {}
+    timeout-minutes: 10
     steps:
       - name: Download exact authorized publisher input
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: hf-static-space-publisher-input-${{ github.sha }}
           path: ${{ runner.temp }}/publisher-input
+      - name: Install pinned Hugging Face client without repository credentials
+        id: publisher-environment
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/publication-evidence"
       - name: Publish exact bundle with only the Hugging Face credential
         env:
           GITHUB_TOKEN: ""
@@ -113,6 +136,7 @@ jobs:
       checks: read
       contents: read
       pull-requests: read
+    timeout-minutes: 20
     steps:
       - name: Download exact authorized publisher input
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -153,24 +177,48 @@ jobs:
       attestations: write
       contents: read
       id-token: write
+    timeout-minutes: 10
     steps:
       - name: Download exact publisher outcome
+        id: publisher-evidence-download
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: hf-static-space-publication-${{ github.sha }}
           path: ${{ runner.temp }}/publication-evidence
       - name: Download exact public measurement
+        id: measurement-evidence-download
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: hf-static-space-measurement-${{ github.sha }}
           path: ${{ runner.temp }}/measurement-evidence
       - name: Attest canonical exact-revision measurement with GitHub OIDC
+        id: oidc
+        if: needs.measure.outputs.measurement-outcome == 'success' && needs.measure.outputs.measurement-evidence-outcome == 'success' && steps.publisher-evidence-download.outcome == 'success' && steps.measurement-evidence-download.outcome == 'success'
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
           subject-path: ${{ runner.temp }}/measurement-evidence/hf-live-attestation.json
+      - name: Synthesize final receipt or exact workflow-stage failure
+        run: |
+          python scripts/hf_static_space.py workflow-outcome \
+            --authorization-evidence-outcome success \
+            --publisher-evidence-download-outcome success \
+            --measurement-evidence-download-outcome success
+      - name: Synthesize terminal artifact-upload failure
+        run: |
+          python scripts/hf_static_space.py workflow-outcome \
+            --authorization-evidence-outcome success \
+            --publisher-evidence-download-outcome success \
+            --measurement-evidence-download-outcome success
+      - name: Require terminal governed success
+        run: |
+          test "${{ needs.authorize.outputs.authorization-evidence-outcome }}" = "success"
+          test "${{ steps.publisher-evidence-download.outcome }}" = "success"
+          test "${{ steps.measurement-evidence-download.outcome }}" = "success"
 """
 PUBLISHER = b"""import json
-governed_schema = "szl.github-governed-merge/v1"
+governed_schema = "szl.github-governed-merge/v2"
 authorization = load_governed_merge(source_sha, config_path)
 required_workflow = authorization
 parent_commit=before_sha
@@ -179,12 +227,21 @@ verify_live_tree(bundle, tree, allowed)
 _fetch_public_index(origin, source_sha)
 failure_output_path = output
 final_authorization = require_governed_main(source_sha, config_path)
-governance_authorization = publisher_environment = measurement_evidence_upload = True
+governance_authorization = governance_authorization_evidence = True
+publisher_environment = publisher_evidence_download = True
+measurement_evidence_upload = measurement_evidence_download = True
 OIDC_ATTESTED_DEPLOYMENT = WORKFLOW_STAGE_FAILURE = receipt_minted = False
 """
 LOCK = b"huggingface_hub==1.2.3 --hash=sha256:" + b"a" * 64 + b"\n"
 for index in range(22):
     LOCK += f"package-{index}==1.0 --hash=sha256:{index:064x}\n".encode()
+VALIDATOR_LOCK = (
+    b"PyYAML==6.0.3 --hash=sha256:"
+    + b"b" * 64
+    + b" --hash=sha256:"
+    + b"c" * 64
+    + b"\n"
+)
 CONFIG = json.dumps({"source_repository": REPOSITORY, "target": "SZLHOLDINGS/lambda-gate-holo"}).encode()
 
 
@@ -199,7 +256,7 @@ def manifest_fixture() -> dict:
         "observed_candidate_sha": HEAD,
         "pending_reason": None,
         "workflow_files": {".github/workflows/hf-static-space.yml": digest(WORKFLOW.encode())},
-        "secret_execution_files": {".hf-space.json": digest(CONFIG), "requirements/hf-publisher.lock": digest(LOCK), "scripts/hf_static_space.py": digest(PUBLISHER)},
+        "secret_execution_files": {".hf-space.json": digest(CONFIG), "requirements/hf-publisher.lock": digest(LOCK), "requirements/hf-validator.lock": digest(VALIDATOR_LOCK), "scripts/hf_static_space.py": digest(PUBLISHER)},
         "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
         "publisher_contract": {
             "publisher_workflow": ".github/workflows/hf-static-space.yml",
@@ -209,7 +266,7 @@ def manifest_fixture() -> dict:
             "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
             "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": REPOSITORY, "target": "SZLHOLDINGS/lambda-gate-holo"}],
             "required_workflow_markers": ["on:", "push:", "branches: [main]", "permissions: {}", "contents: read", "id-token: write", "attestations: write", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "GITHUB_TOKEN: ${{ github.token }}", "HF_TOKEN: ${{ secrets.HF_TOKEN }}"],
-            "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "szl.github-governed-merge/v1", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "governance_authorization", "publisher_environment", "measurement_evidence_upload", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "receipt_minted"],
+            "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "szl.github-governed-merge/v2", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "governance_authorization", "governance_authorization_evidence", "publisher_environment", "publisher_evidence_download", "measurement_evidence_upload", "measurement_evidence_download", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "receipt_minted"],
         },
     }
     targets = {}
@@ -227,7 +284,7 @@ def manifest_fixture() -> dict:
 
 
 def blob_values() -> dict[str, bytes]:
-    return {".github/workflows/hf-static-space.yml": WORKFLOW.encode(), ".hf-space.json": CONFIG, "requirements/hf-publisher.lock": LOCK, "scripts/hf_static_space.py": PUBLISHER, "LICENSE": b"license", "README.md": b"readme", "index.html": b"<p>public</p>"}
+    return {".github/workflows/hf-static-space.yml": WORKFLOW.encode(), ".hf-space.json": CONFIG, "requirements/hf-publisher.lock": LOCK, "requirements/hf-validator.lock": VALIDATOR_LOCK, "scripts/hf_static_space.py": PUBLISHER, "LICENSE": b"license", "README.md": b"readme", "index.html": b"<p>public</p>"}
 
 
 class FakeAPI:
@@ -303,12 +360,12 @@ class BoundaryTests(unittest.TestCase):
                 for name, item in manifest["targets"].items()
             },
             {
-                "szl-holdings/energy-attest-holo": "1016a8917e94e93d17e9e82db5c883287a3c30df",
-                "szl-holdings/governed-norm-holo": "864a9fd73135fd5fa683b5074bca50e0cddde365",
-                "szl-holdings/lambda-gate-holo": "0d6d90218a33db0103bfa2e158bbc68294497f27",
-                "szl-holdings/receipt-chain-live": "e9b9c11441fb487bc83d45e7b27288ef5b3151a1",
+                "szl-holdings/energy-attest-holo": "3a11fc31c44a14341f7189b019a21bca4ddfb7b8",
+                "szl-holdings/governed-norm-holo": "34161d0a968a077950b5aac3f8dd01349eada19d",
+                "szl-holdings/lambda-gate-holo": "5d1aa069e719d4d6ad4dbe46b3f3ca4ec0d3c1f7",
+                "szl-holdings/receipt-chain-live": "2c098c2a844a0d079bdd03f60c7461f6c570b8fd",
                 "szl-holdings/szl-kernels-live": None,
-                "szl-holdings/szl-provctl-live": "36bdfed75b8812fb8d0ed873d3fbd6a4ed855fa3",
+                "szl-holdings/szl-provctl-live": "0eb174685ee0dd09f1105e2300c698c3fa40b38a",
             },
         )
         for name, item in manifest["targets"].items():
@@ -319,6 +376,17 @@ class BoundaryTests(unittest.TestCase):
                 self.assertIn("measure-exact-publication", markers)
                 self.assertIn("attest-exact-publication", markers)
                 self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", markers)
+                self.assertIn("include-hidden-files: true", markers)
+                self.assertIn("--publisher-evidence-download-outcome", markers)
+                self.assertEqual(
+                    set(item["secret_execution_files"]),
+                    {
+                        ".hf-space.json",
+                        "requirements/hf-publisher.lock",
+                        "requirements/hf-validator.lock",
+                        "scripts/hf_static_space.py",
+                    },
+                )
             self.assertNotIn("QILLQAQ_PRIVATE_KEY", markers)
             self.assertNotIn("permission-administration: read", markers)
             self.assertNotIn("actions/create-github-app-token@", "\n".join(markers))
@@ -603,6 +671,54 @@ class BoundaryTests(unittest.TestCase):
                 1,
             ),
             "artifact input",
+        )
+        rejected(
+            WORKFLOW.replace("    timeout-minutes: 20\n", "    timeout-minutes: 10\n", 1),
+            "measure job timeout",
+        )
+        rejected(
+            WORKFLOW.replace("          include-hidden-files: true\n", "          include-hidden-files: false\n", 1),
+            "artifact input include-hidden-files",
+        )
+        rejected(
+            WORKFLOW.replace(
+                '          mkdir -p "$RUNNER_TEMP/publication-evidence"\n',
+                "          echo evidence-directory-omitted\n",
+                1,
+            ),
+            "publication evidence directory",
+        )
+        rejected(
+            WORKFLOW.replace(
+                " && needs.authorize.outputs.authorization-evidence-outcome == 'success'",
+                "",
+                1,
+            ),
+            "publisher job is not bound",
+        )
+        rejected(
+            WORKFLOW.replace(
+                " && steps.publisher-evidence-download.outcome == 'success'",
+                "",
+                1,
+            ),
+            "OIDC attestation is not gated",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "--publisher-evidence-download-outcome success",
+                "--publisher-evidence-download-removed success",
+                1,
+            ),
+            "omits an exact evidence outcome",
+        )
+        rejected(
+            WORKFLOW.replace(
+                '          test "${{ steps.publisher-evidence-download.outcome }}" = "success"\n',
+                "",
+                1,
+            ),
+            "terminal success does not require",
         )
 
     def test_yaml_and_expression_bypasses_fail_closed(self) -> None:

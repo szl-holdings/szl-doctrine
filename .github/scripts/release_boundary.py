@@ -147,6 +147,13 @@ def _validate_entry(repository: str, value: object) -> None:
         raise BoundaryError(f"pending target is not explicitly fail-closed: {repository}")
     workflows = _hash_map(entry["workflow_files"], state, "workflow files")
     closure = _hash_map(entry["secret_execution_files"], state, "secret execution files")
+    if repository != "szl-holdings/szl-kernels-live" and set(closure) != {
+        ".hf-space.json",
+        "requirements/hf-publisher.lock",
+        "requirements/hf-validator.lock",
+        "scripts/hf_static_space.py",
+    }:
+        raise BoundaryError(f"static publisher protected closure is not exact: {repository}")
     if set(workflows) & set(closure) or any(not path.startswith(".github/workflows/") for path in workflows):
         raise BoundaryError(f"workflow and secret closure path sets are invalid: {repository}")
     assets = entry["mutable_public_assets"]
@@ -564,8 +571,8 @@ def _command_tokens(command: str, label: str) -> list[str]:
 
 
 def _require_artifact_step(
-    job: dict, name: str, action: str, expected_with: dict[str, str]
-) -> None:
+    job: dict, name: str, action: str, expected_with: dict[str, object]
+) -> dict:
     step = _named_step(job, name)
     if step.get("uses") != action:
         raise BoundaryError(f"{name} does not use the exact pinned artifact action")
@@ -573,6 +580,7 @@ def _require_artifact_step(
     for key, expected in expected_with.items():
         if inputs.get(key) != expected:
             raise BoundaryError(f"{name} does not bind exact artifact input {key}")
+    return step
 
 
 def _walk_scalars(value: object, path: tuple[object, ...] = ()):
@@ -610,6 +618,17 @@ def _workflow_governance_contract(workflow: str) -> None:
     validate, dco = jobs["validate"], jobs["dco"]
     authorize, deploy = jobs["authorize"], jobs["deploy"]
     measure, attest = jobs["measure"], jobs["attest"]
+    expected_timeouts = {
+        "validate": 10,
+        "dco": 10,
+        "authorize": 10,
+        "deploy": 10,
+        "measure": 20,
+        "attest": 10,
+    }
+    for job_id, timeout in expected_timeouts.items():
+        if jobs[job_id].get("timeout-minutes") != timeout:
+            raise BoundaryError(f"{job_id} job timeout is not exact")
     if "permissions" in validate or "permissions" in dco:
         raise BoundaryError("validation jobs must inherit the exact read-only profile")
     if _permissions(authorize.get("permissions"), "authorization job") != STATIC_AUTHORIZATION_PERMISSIONS:
@@ -631,8 +650,18 @@ def _workflow_governance_contract(workflow: str) -> None:
         raise BoundaryError("attestation job identity is wrong")
     if authorize.get("if") != "github.event_name == 'push' && github.ref == 'refs/heads/main'":
         raise BoundaryError("authorization job is not protected-main-push only")
+    if authorize.get("outputs") != {
+        "authorization-outcome": "${{ steps.authorization.outcome }}",
+        "authorization-evidence-outcome": "${{ steps.authorization-evidence.outcome }}",
+        "bundle-outcome": "${{ steps.bundle.outcome }}",
+        "publisher-input-outcome": "${{ steps.publisher-input.outcome }}",
+        "publisher-input-evidence-outcome": "${{ steps.publisher-input-evidence.outcome }}",
+    }:
+        raise BoundaryError("authorization outputs do not preserve every exact gate")
     if deploy.get("if") != (
-        "always() && needs.authorize.outputs.authorization-outcome == 'success' "
+        "always() && needs.authorize.result == 'success' "
+        "&& needs.authorize.outputs.authorization-outcome == 'success' "
+        "&& needs.authorize.outputs.authorization-evidence-outcome == 'success' "
         "&& needs.authorize.outputs.publisher-input-evidence-outcome == 'success'"
     ):
         raise BoundaryError("publisher job is not bound to exact authorization outputs")
@@ -719,6 +748,18 @@ def _workflow_governance_contract(workflow: str) -> None:
     ):
         raise BoundaryError("publisher mutation command is not exact and mandatory")
 
+    publisher_environment = _named_step(
+        deploy, "Install pinned Hugging Face client without repository credentials"
+    )
+    publisher_environment_commands = _logical_shell_commands(
+        publisher_environment.get("run"), "publisher environment"
+    )
+    if publisher_environment_commands[:2] != [
+        "set -euo pipefail",
+        'mkdir -p "$RUNNER_TEMP/publication-evidence"',
+    ]:
+        raise BoundaryError("publication evidence directory is not created before mutation")
+
     measurement = _named_step(
         measure, "Measure public bytes and reauthorize current main without HF credentials"
     )
@@ -781,15 +822,29 @@ def _workflow_governance_contract(workflow: str) -> None:
         if value == NATIVE_GOVERNANCE_TOKEN:
             raise BoundaryError("publisher job contains a GitHub repository credential")
 
-    _require_artifact_step(
+    publisher_input_upload = _require_artifact_step(
         authorize,
         "Upload exact publisher input",
         UPLOAD_ARTIFACT,
         {
             "name": "hf-static-space-publisher-input-${{ github.sha }}",
             "path": "${{ runner.temp }}/publisher-input",
+            "include-hidden-files": True,
         },
     )
+    if publisher_input_upload.get("id") != "publisher-input-evidence":
+        raise BoundaryError("publisher input evidence step identity is not exact")
+    authorization_evidence = _require_artifact_step(
+        authorize,
+        "Upload governed-merge authorization evidence",
+        UPLOAD_ARTIFACT,
+        {"name": "hf-static-space-authorization-${{ github.sha }}"},
+    )
+    if (
+        authorization_evidence.get("id") != "authorization-evidence"
+        or authorization_evidence.get("continue-on-error") is not True
+    ):
+        raise BoundaryError("authorization evidence preservation step is not exact")
     _require_artifact_step(
         deploy,
         "Download exact authorized publisher input",
@@ -835,7 +890,7 @@ def _workflow_governance_contract(workflow: str) -> None:
             "path": "${{ runner.temp }}/measurement-evidence",
         },
     )
-    _require_artifact_step(
+    publisher_download = _require_artifact_step(
         attest,
         "Download exact publisher outcome",
         DOWNLOAD_ARTIFACT,
@@ -844,7 +899,7 @@ def _workflow_governance_contract(workflow: str) -> None:
             "path": "${{ runner.temp }}/publication-evidence",
         },
     )
-    _require_artifact_step(
+    measurement_download = _require_artifact_step(
         attest,
         "Download exact public measurement",
         DOWNLOAD_ARTIFACT,
@@ -853,13 +908,53 @@ def _workflow_governance_contract(workflow: str) -> None:
             "path": "${{ runner.temp }}/measurement-evidence",
         },
     )
+    if (
+        publisher_download.get("id") != "publisher-evidence-download"
+        or publisher_download.get("continue-on-error") is not True
+        or measurement_download.get("id") != "measurement-evidence-download"
+        or measurement_download.get("continue-on-error") is not True
+    ):
+        raise BoundaryError("attestation artifact download outcomes are not preserved")
     oidc = _named_step(
         attest, "Attest canonical exact-revision measurement with GitHub OIDC"
     )
+    if oidc.get("if") != (
+        "needs.measure.outputs.measurement-outcome == 'success' "
+        "&& needs.measure.outputs.measurement-evidence-outcome == 'success' "
+        "&& steps.publisher-evidence-download.outcome == 'success' "
+        "&& steps.measurement-evidence-download.outcome == 'success'"
+    ):
+        raise BoundaryError("OIDC attestation is not gated on both exact artifact downloads")
     if oidc.get("uses") != ATTEST_PROVENANCE or _mapping(
         oidc.get("with"), "OIDC attestation inputs"
     ).get("subject-path") != "${{ runner.temp }}/measurement-evidence/hf-live-attestation.json":
         raise BoundaryError("OIDC attestation does not bind the exact public measurement")
+    outcome_markers = (
+        "--authorization-evidence-outcome",
+        "--publisher-evidence-download-outcome",
+        "--measurement-evidence-download-outcome",
+    )
+    for step_name in (
+        "Synthesize final receipt or exact workflow-stage failure",
+        "Synthesize terminal artifact-upload failure",
+    ):
+        outcome_step = _named_step(attest, step_name)
+        outcome_run = outcome_step.get("run")
+        if not isinstance(outcome_run, str) or any(
+            marker not in outcome_run for marker in outcome_markers
+        ):
+            raise BoundaryError(f"{step_name} omits an exact evidence outcome")
+    terminal_success = _named_step(attest, "Require terminal governed success")
+    terminal_run = terminal_success.get("run")
+    terminal_markers = (
+        'test "${{ needs.authorize.outputs.authorization-evidence-outcome }}" = "success"',
+        'test "${{ steps.publisher-evidence-download.outcome }}" = "success"',
+        'test "${{ steps.measurement-evidence-download.outcome }}" = "success"',
+    )
+    if not isinstance(terminal_run, str) or any(
+        marker not in terminal_run for marker in terminal_markers
+    ):
+        raise BoundaryError("terminal success does not require the complete evidence chain")
 
 
 def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -> None:
@@ -868,6 +963,7 @@ def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -
         workflow = blobs[contract["publisher_workflow"]].decode("utf-8")
         publisher = blobs[contract["publisher_script"]].decode("utf-8")
         lock = blobs[contract["dependency_lock"]].decode("utf-8")
+        validator_lock = blobs["requirements/hf-validator.lock"].decode("utf-8")
     except UnicodeError as error:
         raise BoundaryError("workflow or protected runtime is not UTF-8") from error
     uses = ANY_USES.findall(workflow)
@@ -895,6 +991,20 @@ def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -
         packages.add(match.group(1).lower())
     if len(packages) != 23 or "huggingface_hub" not in packages:
         raise BoundaryError("publisher dependency lock is not the reviewed 23-package closure")
+    validator_lines = [
+        line.strip()
+        for line in re.sub(r"\\\s*\n\s*", " ", validator_lock).splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if (
+        len(validator_lines) != 1
+        or re.fullmatch(
+            r"PyYAML==6\.0\.3(?:\s+--hash=sha256:[0-9a-f]{64}){2}",
+            validator_lines[0],
+        )
+        is None
+    ):
+        raise BoundaryError("validator dependency lock is not the reviewed minimal closure")
     try:
         module = ast.parse(publisher)
     except SyntaxError as error:
