@@ -246,6 +246,32 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(RB.BoundaryError, "no ACTIVE"):
             RB.verify_all_active(all_pending, FakeAPI())
 
+    def test_kernel_manifest_binds_exact_candidate_git_blob_digests(self) -> None:
+        """Pin Git object bytes, not platform-normalized checkout bytes."""
+        kernel = RB.load_manifest(MANIFEST_PATH)["targets"]["szl-holdings/szl-kernels-live"]
+        self.assertEqual(
+            kernel["workflow_files"],
+            {
+                ".github/workflows/hf-space-deploy.yml": "19fd75f412a034fec1410040ed019b523bd0d05c7f5859ed1b1c66cb7fde7e12",
+                ".github/workflows/kernel-contracts.yml": "89e8d517383afda0098bb64d6b065c16c56170bbd65430b6318af25a2b83dfbf",
+            },
+        )
+        self.assertEqual(
+            kernel["secret_execution_files"],
+            {
+                "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+                "scripts/build_hf_space_bundle.py": "90f2d41a356bf4150ce078a6629dc8110f2e8f0789191e1f8b95def4e3c498e7",
+                "scripts/deploy_hf_space.py": "7e6183127f8354d388f5c7bbf6b3f7771c7f021accbd7f370cbda11aa20c0409",
+                "scripts/kernel_portfolio_truth.mjs": "59ead9dcf02747fe4bab58fa3f78e9f7209dc767de4dedfdfaf3da02300655c3",
+                "scripts/snapshot_kernel_contracts.py": "15e5c54b1a17aa3bee2f1d63d0494f5dbc11f73c7100e75415b3c5f798e7edd7",
+                "scripts/verify_kernel_registry.py": "651d3da3a64f9180a7d47ebb577e870c6d585c171bfc945f4bdfeb17980a259c",
+                "tests/fixtures/hf-static-window-huggingface-injection.html": "50e110935e42b44c4ea82b3544e2089de00a4082635d73931d14af5ab3d9b9de",
+                "tests/test_hf_space_bundle.py": "d307d7f58ab79378ed4b03cac6508ed7233572ce77277d6eb992131721443573",
+                "tests/test_kernel_portfolio_truth.mjs": "7751d55081a2946f56bfec888948c4bf5d5880b96092d53458a92b4f2c55478d",
+                "tests/test_kernel_registry.py": "6c8d2827f5f1c37ec353655c46f45100f046cb767da39ab45f9cd3b98bc5957b",
+            },
+        )
+
     def test_all_active_verification_reports_verified_static_before_pending(self) -> None:
         result = RB.verify_all_active(self.manifest, FakeAPI())
         self.assertEqual(result["status"], "MANIFEST_INCOMPLETE_PENDING_TARGETS")
