@@ -53,6 +53,63 @@ STATIC_ATTESTATION_PERMISSIONS = frozenset(
 STATIC_JOB_IDS = frozenset(
     {"validate", "dco", "authorize", "deploy", "measure", "attest"}
 )
+STATIC_STEP_NAMES = {
+    "validate": (
+        "Harden runner",
+        "Checkout exact event head",
+        "Set up Python",
+        "Verify exact checkout and release contracts",
+    ),
+    "dco": (
+        "Harden runner",
+        "Checkout exact event head with history",
+        "Set up exact Python",
+        "Validate every exact-range commit DCO trailer",
+    ),
+    "authorize": (
+        "Harden runner",
+        "Checkout exact protected-main event",
+        "Set up exact Python",
+        "Authorize the exact governed merge without HF credentials",
+        "Build and validate exact source-bound publisher input",
+        "Stage immutable publisher input",
+        "Upload exact publisher input",
+        "Upload governed-merge authorization evidence",
+        "Require exact governed authorization",
+    ),
+    "deploy": (
+        "Harden runner",
+        "Download exact authorized publisher input",
+        "Set up exact Python",
+        "Install pinned Hugging Face client without repository credentials",
+        "Classify publisher-environment failure before credential materialization",
+        "Publish exact bundle with only the Hugging Face credential",
+        "Upload publisher outcome before any OIDC privilege exists",
+        "Require exact publisher success",
+    ),
+    "measure": (
+        "Harden runner",
+        "Download exact authorized publisher input",
+        "Download exact publisher outcome",
+        "Set up exact Python",
+        "Measure public bytes and reauthorize current main without HF credentials",
+        "Upload exact public measurement before OIDC",
+        "Require exact public measurement",
+    ),
+    "attest": (
+        "Harden runner",
+        "Checkout exact protected-main evidence synthesizer",
+        "Set up exact Python",
+        "Download exact publisher outcome",
+        "Download exact public measurement",
+        "Attest canonical exact-revision measurement with GitHub OIDC",
+        "Synthesize final receipt or exact workflow-stage failure",
+        "Upload terminal governed evidence",
+        "Synthesize terminal artifact-upload failure",
+        "Upload terminal failure evidence",
+        "Require terminal governed success",
+    ),
+}
 HF_SECRET = "${{ secrets.HF_TOKEN }}"
 UPLOAD_ARTIFACT = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 DOWNLOAD_ARTIFACT = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
@@ -577,9 +634,8 @@ def _require_artifact_step(
     if step.get("uses") != action:
         raise BoundaryError(f"{name} does not use the exact pinned artifact action")
     inputs = _mapping(step.get("with"), f"{name} inputs")
-    for key, expected in expected_with.items():
-        if inputs.get(key) != expected:
-            raise BoundaryError(f"{name} does not bind exact artifact input {key}")
+    if inputs != expected_with:
+        raise BoundaryError(f"{name} artifact input map is not exact")
     return step
 
 
@@ -618,6 +674,12 @@ def _workflow_governance_contract(workflow: str) -> None:
     validate, dco = jobs["validate"], jobs["dco"]
     authorize, deploy = jobs["authorize"], jobs["deploy"]
     measure, attest = jobs["measure"], jobs["attest"]
+    for job_id, expected_names in STATIC_STEP_NAMES.items():
+        actual_names = tuple(
+            step.get("name") for step in _steps(jobs[job_id], f"job {job_id}")
+        )
+        if actual_names != expected_names:
+            raise BoundaryError(f"{job_id} job step sequence is not exact")
     expected_timeouts = {
         "validate": 10,
         "dco": 10,
@@ -803,8 +865,8 @@ def _workflow_governance_contract(workflow: str) -> None:
         raise BoundaryError("measurement command is not exact and mandatory")
 
     secret_expression = re.compile(
-        r"\bsecrets\s*(?:\.\s*[A-Za-z_][A-Za-z0-9_]*"
-        r"|\[\s*(?:'[^']+'|\"[^\"]+\")\s*\])"
+        r"\$\{\{(?:(?!\}\}).)*\bsecrets\b(?:(?!\}\}).)*\}\}",
+        re.IGNORECASE | re.DOTALL,
     )
     secret_values = [
         value
@@ -830,6 +892,8 @@ def _workflow_governance_contract(workflow: str) -> None:
             "name": "hf-static-space-publisher-input-${{ github.sha }}",
             "path": "${{ runner.temp }}/publisher-input",
             "include-hidden-files": True,
+            "if-no-files-found": "error",
+            "retention-days": 1,
         },
     )
     if publisher_input_upload.get("id") != "publisher-input-evidence":
@@ -838,7 +902,15 @@ def _workflow_governance_contract(workflow: str) -> None:
         authorize,
         "Upload governed-merge authorization evidence",
         UPLOAD_ARTIFACT,
-        {"name": "hf-static-space-authorization-${{ github.sha }}"},
+        {
+            "name": "hf-static-space-authorization-${{ github.sha }}",
+            "path": (
+                "${{ runner.temp }}/governed-merge.json\n"
+                "${{ runner.temp }}/governed-merge-failure.json\n"
+            ),
+            "if-no-files-found": "error",
+            "retention-days": 90,
+        },
     )
     if (
         authorization_evidence.get("id") != "authorization-evidence"
@@ -861,6 +933,8 @@ def _workflow_governance_contract(workflow: str) -> None:
         {
             "name": "hf-static-space-publication-${{ github.sha }}",
             "path": "${{ runner.temp }}/publication-evidence",
+            "if-no-files-found": "error",
+            "retention-days": 90,
         },
     )
     _require_artifact_step(
@@ -888,6 +962,8 @@ def _workflow_governance_contract(workflow: str) -> None:
         {
             "name": "hf-static-space-measurement-${{ github.sha }}",
             "path": "${{ runner.temp }}/measurement-evidence",
+            "if-no-files-found": "error",
+            "retention-days": 90,
         },
     )
     publisher_download = _require_artifact_step(
@@ -929,6 +1005,32 @@ def _workflow_governance_contract(workflow: str) -> None:
         oidc.get("with"), "OIDC attestation inputs"
     ).get("subject-path") != "${{ runner.temp }}/measurement-evidence/hf-live-attestation.json":
         raise BoundaryError("OIDC attestation does not bind the exact public measurement")
+    _require_artifact_step(
+        attest,
+        "Upload terminal governed evidence",
+        UPLOAD_ARTIFACT,
+        {
+            "name": "hf-static-space-terminal-evidence-${{ github.sha }}",
+            "path": (
+                "${{ runner.temp }}/publication-evidence\n"
+                "${{ runner.temp }}/measurement-evidence\n"
+                "${{ runner.temp }}/terminal-evidence\n"
+            ),
+            "if-no-files-found": "error",
+            "retention-days": 90,
+        },
+    )
+    _require_artifact_step(
+        attest,
+        "Upload terminal failure evidence",
+        UPLOAD_ARTIFACT,
+        {
+            "name": "hf-static-space-terminal-upload-failure-${{ github.sha }}",
+            "path": "${{ runner.temp }}/terminal-evidence/hf-workflow-stage-failure.json",
+            "if-no-files-found": "error",
+            "retention-days": 90,
+        },
+    )
     outcome_markers = (
         "--authorization-evidence-outcome",
         "--publisher-evidence-download-outcome",

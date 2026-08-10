@@ -42,14 +42,26 @@ jobs:
     name: validate-static-space
     timeout-minutes: 10
     steps:
-      - name: Validate
-        run: echo validated
+      - name: Harden runner
+        run: "true"
+      - name: Checkout exact event head
+        run: "true"
+      - name: Set up Python
+        run: "true"
+      - name: Verify exact checkout and release contracts
+        run: "true"
   dco:
     name: DCO
     timeout-minutes: 10
     steps:
-      - name: Check DCO
-        run: echo checked
+      - name: Harden runner
+        run: "true"
+      - name: Checkout exact event head with history
+        run: "true"
+      - name: Set up exact Python
+        run: "true"
+      - name: Validate every exact-range commit DCO trailer
+        run: "true"
   authorize:
     name: authorize-exact-governed-merge
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -67,6 +79,12 @@ jobs:
       publisher-input-outcome: ${{ steps.publisher-input.outcome }}
       publisher-input-evidence-outcome: ${{ steps.publisher-input-evidence.outcome }}
     steps:
+      - name: Harden runner
+        run: "true"
+      - name: Checkout exact protected-main event
+        run: "true"
+      - name: Set up exact Python
+        run: "true"
       - name: Authorize the exact governed merge without HF credentials
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -79,6 +97,10 @@ jobs:
             --event "$GITHUB_EVENT_PATH" \
             --output "$RUNNER_TEMP/governed-merge.json" \
             --failure-output "$RUNNER_TEMP/governed-merge-failure.json"
+      - name: Build and validate exact source-bound publisher input
+        run: "true"
+      - name: Stage immutable publisher input
+        run: "true"
       - name: Upload exact publisher input
         id: publisher-input-evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -86,12 +108,21 @@ jobs:
           name: hf-static-space-publisher-input-${{ github.sha }}
           path: ${{ runner.temp }}/publisher-input
           include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload governed-merge authorization evidence
         id: authorization-evidence
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: hf-static-space-authorization-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/governed-merge.json
+            ${{ runner.temp }}/governed-merge-failure.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Require exact governed authorization
+        run: "true"
   deploy:
     name: publish-exact-protected-main
     if: always() && needs.authorize.result == 'success' && needs.authorize.outputs.authorization-outcome == 'success' && needs.authorize.outputs.authorization-evidence-outcome == 'success' && needs.authorize.outputs.publisher-input-evidence-outcome == 'success'
@@ -99,16 +130,22 @@ jobs:
     permissions: {}
     timeout-minutes: 10
     steps:
+      - name: Harden runner
+        run: "true"
       - name: Download exact authorized publisher input
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: hf-static-space-publisher-input-${{ github.sha }}
           path: ${{ runner.temp }}/publisher-input
+      - name: Set up exact Python
+        run: "true"
       - name: Install pinned Hugging Face client without repository credentials
         id: publisher-environment
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/publication-evidence"
+      - name: Classify publisher-environment failure before credential materialization
+        run: "true"
       - name: Publish exact bundle with only the Hugging Face credential
         env:
           GITHUB_TOKEN: ""
@@ -127,6 +164,10 @@ jobs:
         with:
           name: hf-static-space-publication-${{ github.sha }}
           path: ${{ runner.temp }}/publication-evidence
+          if-no-files-found: error
+          retention-days: 90
+      - name: Require exact publisher success
+        run: "true"
   measure:
     name: measure-exact-publication
     if: always() && needs.deploy.outputs.publish-outcome == 'success' && needs.deploy.outputs.publisher-evidence-outcome == 'success'
@@ -138,6 +179,8 @@ jobs:
       pull-requests: read
     timeout-minutes: 20
     steps:
+      - name: Harden runner
+        run: "true"
       - name: Download exact authorized publisher input
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -148,6 +191,8 @@ jobs:
         with:
           name: hf-static-space-publication-${{ github.sha }}
           path: ${{ runner.temp }}/publication-evidence
+      - name: Set up exact Python
+        run: "true"
       - name: Measure public bytes and reauthorize current main without HF credentials
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -169,6 +214,10 @@ jobs:
         with:
           name: hf-static-space-measurement-${{ github.sha }}
           path: ${{ runner.temp }}/measurement-evidence
+          if-no-files-found: error
+          retention-days: 90
+      - name: Require exact public measurement
+        run: "true"
   attest:
     name: attest-exact-publication
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -179,6 +228,12 @@ jobs:
       id-token: write
     timeout-minutes: 10
     steps:
+      - name: Harden runner
+        run: "true"
+      - name: Checkout exact protected-main evidence synthesizer
+        run: "true"
+      - name: Set up exact Python
+        run: "true"
       - name: Download exact publisher outcome
         id: publisher-evidence-download
         continue-on-error: true
@@ -205,12 +260,29 @@ jobs:
             --authorization-evidence-outcome success \
             --publisher-evidence-download-outcome success \
             --measurement-evidence-download-outcome success
+      - name: Upload terminal governed evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hf-static-space-terminal-evidence-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/publication-evidence
+            ${{ runner.temp }}/measurement-evidence
+            ${{ runner.temp }}/terminal-evidence
+          if-no-files-found: error
+          retention-days: 90
       - name: Synthesize terminal artifact-upload failure
         run: |
           python scripts/hf_static_space.py workflow-outcome \
             --authorization-evidence-outcome success \
             --publisher-evidence-download-outcome success \
             --measurement-evidence-download-outcome success
+      - name: Upload terminal failure evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hf-static-space-terminal-upload-failure-${{ github.sha }}
+          path: ${{ runner.temp }}/terminal-evidence/hf-workflow-stage-failure.json
+          if-no-files-found: error
+          retention-days: 90
       - name: Require terminal governed success
         run: |
           test "${{ needs.authorize.outputs.authorization-evidence-outcome }}" = "success"
@@ -678,7 +750,15 @@ class BoundaryTests(unittest.TestCase):
         )
         rejected(
             WORKFLOW.replace("          include-hidden-files: true\n", "          include-hidden-files: false\n", 1),
-            "artifact input include-hidden-files",
+            "artifact input map",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "          path: ${{ runner.temp }}/publisher-input\n",
+                "          path: ${{ runner.temp }}/publisher-input\n          run-id: 7\n",
+                1,
+            ),
+            "artifact input map",
         )
         rejected(
             WORKFLOW.replace(
@@ -720,6 +800,14 @@ class BoundaryTests(unittest.TestCase):
             ),
             "terminal success does not require",
         )
+        rejected(
+            WORKFLOW.replace(
+                "      - name: Require exact public measurement\n",
+                "      - name: Overwrite measured evidence\n        run: echo forged\n      - name: Require exact public measurement\n",
+                1,
+            ),
+            "measure job step sequence",
+        )
 
     def test_yaml_and_expression_bypasses_fail_closed(self) -> None:
         workflow_path = ".github/workflows/hf-static-space.yml"
@@ -747,6 +835,24 @@ class BoundaryTests(unittest.TestCase):
             ),
             "credential boundary|HF secret consumption",
         )
+        for expression in (
+            "${{ secrets[format('HF_{0}', 'TOKEN')] }}",
+            "${{ toJSON(secrets) }}",
+        ):
+            with self.subTest(expression=expression):
+                rejected(
+                    WORKFLOW.replace(
+                        '      - name: Harden runner\n        run: "true"\n',
+                        (
+                            "      - name: Harden runner\n"
+                            "        env:\n"
+                            f"          LEAK: {expression}\n"
+                            '        run: "true"\n'
+                        ),
+                        1,
+                    ),
+                    "HF secret consumption",
+                )
         rejected(
             WORKFLOW.replace(
                 '            --failure-output "$RUNNER_TEMP/governed-merge-failure.json"',
