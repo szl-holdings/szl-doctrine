@@ -179,7 +179,7 @@ class BoundaryTests(unittest.TestCase):
         )
         kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
         self.assertEqual(kernel["state"], "ACTIVE")
-        self.assertEqual(kernel["observed_candidate_sha"], "dd0e106b5c78e7bfb901a28f3f61088d4ee368a9")
+        self.assertEqual(kernel["observed_candidate_sha"], "243247bcae0a7933947fb7059031d00983b1e1e8")
         self.assertIsNone(kernel["pending_reason"])
         self.assertEqual(
             set(kernel["workflow_files"]),
@@ -211,6 +211,32 @@ class BoundaryTests(unittest.TestCase):
         active["secret_execution_files"] = {path: "PENDING" for path in active["secret_execution_files"]}
         with self.assertRaisesRegex(RB.BoundaryError, "no ACTIVE"):
             RB.verify_all_active(all_pending, FakeAPI())
+
+    def test_kernel_manifest_binds_exact_candidate_git_blob_digests(self) -> None:
+        """Pin Git object bytes, not platform-normalized checkout bytes."""
+        kernel = RB.load_manifest(MANIFEST_PATH)["targets"]["szl-holdings/szl-kernels-live"]
+        self.assertEqual(
+            kernel["workflow_files"],
+            {
+                ".github/workflows/hf-space-deploy.yml": "f12d9af3f20fc64c600570513ced56b1cc3850128de183b0b06591247467c519",
+                ".github/workflows/kernel-contracts.yml": "89e8d517383afda0098bb64d6b065c16c56170bbd65430b6318af25a2b83dfbf",
+            },
+        )
+        self.assertEqual(
+            kernel["secret_execution_files"],
+            {
+                "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+                "scripts/build_hf_space_bundle.py": "90f2d41a356bf4150ce078a6629dc8110f2e8f0789191e1f8b95def4e3c498e7",
+                "scripts/deploy_hf_space.py": "7e6183127f8354d388f5c7bbf6b3f7771c7f021accbd7f370cbda11aa20c0409",
+                "scripts/kernel_portfolio_truth.mjs": "59ead9dcf02747fe4bab58fa3f78e9f7209dc767de4dedfdfaf3da02300655c3",
+                "scripts/snapshot_kernel_contracts.py": "15e5c54b1a17aa3bee2f1d63d0494f5dbc11f73c7100e75415b3c5f798e7edd7",
+                "scripts/verify_kernel_registry.py": "651d3da3a64f9180a7d47ebb577e870c6d585c171bfc945f4bdfeb17980a259c",
+                "tests/fixtures/hf-static-window-huggingface-injection.html": "50e110935e42b44c4ea82b3544e2089de00a4082635d73931d14af5ab3d9b9de",
+                "tests/test_hf_space_bundle.py": "fc9706fcd3ba3f1a3ab03155f5bd4fc204376ce1040559ba558619c68127f9da",
+                "tests/test_kernel_portfolio_truth.mjs": "7751d55081a2946f56bfec888948c4bf5d5880b96092d53458a92b4f2c55478d",
+                "tests/test_kernel_registry.py": "6c8d2827f5f1c37ec353655c46f45100f046cb767da39ab45f9cd3b98bc5957b",
+            },
+        )
 
     def test_all_active_verification_reports_verified_static_before_pending(self) -> None:
         result = RB.verify_all_active(self.manifest, FakeAPI())
