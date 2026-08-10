@@ -52,8 +52,10 @@ jobs:
       - name: Reauthorize exact governed main without HF credentials
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: test -n "$GITHUB_TOKEN"
+          SOURCE_SHA: ${{ github.sha }}
+        run: python scripts/hf_static_space.py guard --source-sha "$SOURCE_SHA"
       - env:
+          GITHUB_TOKEN: ${{ github.token }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: "$PUBLISHER_PYTHON" -I scripts/hf_static_space.py
 """
@@ -475,16 +477,72 @@ class BoundaryTests(unittest.TestCase):
         guard_block = """      - name: Reauthorize exact governed main without HF credentials
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: test -n "$GITHUB_TOKEN"
+          SOURCE_SHA: ${{ github.sha }}
+        run: python scripts/hf_static_space.py guard --source-sha "$SOURCE_SHA"
 """
         delayed_guard = dict(baseline)
         delayed_guard[workflow_path] = (
             WORKFLOW.replace(guard_block, "") + guard_block
         ).encode()
         with self.assertRaisesRegex(
-            RB.BoundaryError, "not ordered before the HF secret"
+            RB.BoundaryError, "not ordered before every HF secret consumer"
         ):
             RB._publisher_contract(REPOSITORY, self.entry, delayed_guard)
+
+    def test_native_governance_permissions_and_step_structure_fail_closed(self) -> None:
+        workflow_path = ".github/workflows/hf-static-space.yml"
+        baseline = blob_values()
+
+        def rejected(workflow: str, message: str) -> None:
+            altered = dict(baseline)
+            altered[workflow_path] = workflow.encode()
+            with self.assertRaisesRegex(RB.BoundaryError, message):
+                RB._publisher_contract(REPOSITORY, self.entry, altered)
+
+        rejected(
+            WORKFLOW.replace(
+                "  attestations: write\n",
+                "  attestations: write\n  actions: write\n",
+                1,
+            ),
+            "permissions are not exact",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "    steps:\n",
+                "    permissions:\n      contents: write\n    steps:\n",
+                1,
+            ),
+            "permissions are not exact",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "      - name: Reauthorize exact governed main without HF credentials",
+                "      - name: Untrusted delayed readback",
+                1,
+            ).replace(
+                "      - run: python -I -m venv",
+                "      - run: |\n          # Reauthorize exact governed main without HF credentials\n          echo no-op\n      - run: python -I -m venv",
+                1,
+            ),
+            "does not bind native governance reauthorization",
+        )
+        rejected(
+            WORKFLOW.replace(
+                '        run: python scripts/hf_static_space.py guard --source-sha "$SOURCE_SHA"',
+                '        run: |\n          # python scripts/hf_static_space.py guard --source-sha "$SOURCE_SHA"\n          echo no-op',
+                1,
+            ),
+            "command is not executable",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "          GITHUB_TOKEN: ${{ github.token }}\n          HF_TOKEN:",
+                "          HF_TOKEN:",
+                1,
+            ),
+            "not ordered before every HF secret consumer",
+        )
 
     def test_boundary_never_executes_target_and_source_workflow_is_pinned(self) -> None:
         tree = ast.parse((HERE / "release_boundary.py").read_text(encoding="utf-8"))

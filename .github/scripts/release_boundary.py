@@ -32,19 +32,30 @@ ANY_USES = re.compile(
     r"^\s*(?:-\s+)?uses:\s*([^\s#]+)(?:\s+#.*)?$", re.MULTILINE
 )
 PINNED_USES = re.compile(r"^([^@\s]+)@([0-9a-f]{40})$")
-NATIVE_GOVERNANCE_TOKEN_BINDINGS = (
-    "GITHUB_TOKEN: ${{ github.token }}",
-    "GOVERNANCE_TOKEN: ${{ github.token }}",
+NATIVE_GOVERNANCE_TOKEN = "${{ github.token }}"
+RELEASE_PERMISSION_PROFILE = frozenset(
+    {("attestations", "write"), ("contents", "read"), ("id-token", "write")}
 )
-GOVERNANCE_REAUTHORIZATION_STEPS = (
-    "Reauthorize exact governed main without HF credentials",
-    "Reauthorize exact protected main before credential use",
-)
+SAFE_PERMISSION_PROFILES = {
+    frozenset({("contents", "read")}),
+    RELEASE_PERMISSION_PROFILE,
+}
+GOVERNANCE_REAUTHORIZATION_CONTRACTS = {
+    "Reauthorize exact governed main without HF credentials": (
+        "GITHUB_TOKEN",
+        "static",
+    ),
+    "Reauthorize exact protected main before credential use": (
+        "GOVERNANCE_TOKEN",
+        "kernel",
+    ),
+}
 LEGACY_GOVERNANCE_CREDENTIAL_MARKERS = (
     "actions/create-github-app-token@",
     "QILLQAQ_CLIENT_ID",
     "QILLQAQ_PRIVATE_KEY",
     "permission-administration:",
+    "permission-actions:",
     "permission-contents:",
     "steps.governance-token.outputs.token",
     "secrets.GITHUB_TOKEN",
@@ -411,6 +422,274 @@ def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> Non
                 raise BoundaryError("publisher Python identity constants are wrong")
 
 
+def _line_indent(line: str) -> int:
+    prefix = line[: len(line) - len(line.lstrip(" \t"))]
+    if "\t" in prefix:
+        raise BoundaryError("publisher workflow uses tab indentation")
+    return len(prefix)
+
+
+def _permission_mapping(lines: list[str], index: int) -> tuple[int, dict[str, str]]:
+    match = re.fullmatch(
+        r'(?P<indent> *)(?P<key>permissions|["\']permissions["\'])\s*:(?P<suffix>.*)',
+        lines[index],
+    )
+    if match is None or match["key"] != "permissions":
+        raise BoundaryError("native governance permissions use an unsupported YAML key")
+    suffix = match["suffix"].strip()
+    if suffix and not suffix.startswith("#"):
+        raise BoundaryError("native governance permissions must use a block mapping")
+    indent = len(match["indent"])
+    permissions: dict[str, str] = {}
+    cursor = index + 1
+    while cursor < len(lines):
+        line = lines[cursor]
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            cursor += 1
+            continue
+        child_indent = _line_indent(line)
+        if child_indent <= indent:
+            break
+        if child_indent != indent + 2:
+            raise BoundaryError("native governance permissions contain nested YAML")
+        child = re.fullmatch(
+            r"([A-Za-z][A-Za-z0-9-]*):\s*([A-Za-z-]+)\s*(?:#.*)?",
+            stripped,
+        )
+        if child is None or child[1] in permissions:
+            raise BoundaryError("native governance permissions are malformed or duplicated")
+        permissions[child[1]] = child[2]
+        cursor += 1
+    profile = frozenset(permissions.items())
+    if profile not in SAFE_PERMISSION_PROFILES:
+        raise BoundaryError("native governance permissions are not exact")
+    return indent, permissions
+
+
+def _workflow_jobs(lines: list[str]) -> list[dict]:
+    jobs_at = [
+        index
+        for index, line in enumerate(lines)
+        if re.fullmatch(r"jobs:\s*(?:#.*)?", line)
+    ]
+    if len(jobs_at) != 1:
+        raise BoundaryError("publisher workflow jobs mapping is not exact")
+    start = jobs_at[0]
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        line = lines[index]
+        if line.strip() and not line.lstrip().startswith("#") and _line_indent(line) == 0:
+            end = index
+            break
+    starts: list[tuple[int, str]] = []
+    for index in range(start + 1, end):
+        line = lines[index]
+        if not line.strip() or line.lstrip().startswith("#") or _line_indent(line) != 2:
+            continue
+        match = re.fullmatch(r"  ([A-Za-z_][A-Za-z0-9_-]*):\s*(?:#.*)?", line)
+        if match is None:
+            raise BoundaryError("publisher workflow job mapping is malformed")
+        starts.append((index, match[1]))
+    if not starts:
+        raise BoundaryError("publisher workflow contains no jobs")
+    jobs = []
+    for position, (job_start, name) in enumerate(starts):
+        job_end = starts[position + 1][0] if position + 1 < len(starts) else end
+        jobs.append({"name": name, "start": job_start, "end": job_end})
+    return jobs
+
+
+def _workflow_permissions(lines: list[str], jobs: list[dict]) -> dict[str, dict[str, str]]:
+    direct = re.compile(
+        r'^(?P<indent> *)(?P<key>permissions|["\']permissions["\'])\s*:(?P<suffix>.*)$'
+    )
+    token = re.compile(r'(?<![A-Za-z0-9_-])(?:permissions|["\']permissions["\'])\s*:')
+    records = []
+    for index, line in enumerate(lines):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if token.search(line) is None:
+            continue
+        if direct.fullmatch(line) is None:
+            raise BoundaryError("publisher workflow embeds a flow-style permissions override")
+        indent, permissions = _permission_mapping(lines, index)
+        records.append({"index": index, "indent": indent, "permissions": permissions})
+    top = [record for record in records if record["indent"] == 0]
+    if len(top) != 1:
+        raise BoundaryError("publisher workflow top-level permissions are not exact")
+    consumed = {top[0]["index"]}
+    profiles: dict[str, dict[str, str]] = {}
+    for job in jobs:
+        overrides = [
+            record
+            for record in records
+            if job["start"] < record["index"] < job["end"] and record["indent"] == 4
+        ]
+        if len(overrides) > 1:
+            raise BoundaryError("publisher workflow job permissions are duplicated")
+        if overrides:
+            consumed.add(overrides[0]["index"])
+            profiles[job["name"]] = overrides[0]["permissions"]
+        else:
+            profiles[job["name"]] = top[0]["permissions"]
+    if consumed != {record["index"] for record in records}:
+        raise BoundaryError("publisher workflow permissions occur outside top-level or job scope")
+    return profiles
+
+
+def _job_steps(lines: list[str], job: dict) -> list[dict]:
+    steps_at = []
+    for index in range(job["start"] + 1, job["end"]):
+        line = lines[index]
+        if _line_indent(line) == 4 and re.fullmatch(r"    steps:\s*(?:#.*)?", line):
+            steps_at.append(index)
+    if not steps_at:
+        return []
+    if len(steps_at) != 1:
+        raise BoundaryError("publisher workflow job steps mapping is duplicated")
+    starts = [
+        index
+        for index in range(steps_at[0] + 1, job["end"])
+        if _line_indent(lines[index]) == 6 and re.match(r"^      -\s+", lines[index])
+    ]
+    if not starts:
+        raise BoundaryError("publisher workflow steps list is malformed")
+    steps = []
+    for position, start in enumerate(starts):
+        end = starts[position + 1] if position + 1 < len(starts) else job["end"]
+        steps.append({"start": start, "end": end, "indent": 6, "job": job["name"]})
+    return steps
+
+
+def _step_fields(lines: list[str], step: dict, key: str) -> list[tuple[int, str, int]]:
+    escaped = re.escape(key)
+    first = re.compile(rf"^ {{6}}-\s+{escaped}:\s*(.*)$")
+    direct = re.compile(rf"^ {{8}}{escaped}:\s*(.*)$")
+    fields = []
+    for index in range(step["start"], step["end"]):
+        match = first.fullmatch(lines[index]) if index == step["start"] else direct.fullmatch(lines[index])
+        if match is not None:
+            fields.append((index, match[1], 8))
+    return fields
+
+
+def _step_name(lines: list[str], step: dict) -> str | None:
+    fields = _step_fields(lines, step, "name")
+    if not fields:
+        return None
+    if len(fields) != 1:
+        raise BoundaryError("publisher workflow step name is duplicated")
+    value = fields[0][1].strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1]
+    return value
+
+
+def _step_environment(lines: list[str], step: dict) -> dict[str, str]:
+    fields = _step_fields(lines, step, "env")
+    if not fields:
+        return {}
+    if len(fields) != 1:
+        raise BoundaryError("publisher workflow step environment is duplicated")
+    at, suffix, field_indent = fields[0]
+    if suffix.strip() and not suffix.lstrip().startswith("#"):
+        raise BoundaryError("publisher workflow step environment must use a block mapping")
+    environment: dict[str, str] = {}
+    for index in range(at + 1, step["end"]):
+        line = lines[index]
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = _line_indent(line)
+        if indent <= field_indent:
+            break
+        if indent != field_indent + 2:
+            raise BoundaryError("publisher workflow step environment contains nested YAML")
+        match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*):\s*(.+)", stripped)
+        if match is None or match[1] in environment:
+            raise BoundaryError("publisher workflow step environment is malformed or duplicated")
+        environment[match[1]] = match[2].strip()
+    return environment
+
+
+def _step_run(lines: list[str], step: dict) -> str:
+    fields = _step_fields(lines, step, "run")
+    if len(fields) != 1:
+        raise BoundaryError("governance reauthorization step must contain one run command")
+    at, suffix, field_indent = fields[0]
+    value = suffix.strip()
+    if value not in {"|", "|-", ">", ">-"}:
+        return value
+    body = []
+    for index in range(at + 1, step["end"]):
+        line = lines[index]
+        if line.strip() and _line_indent(line) <= field_indent:
+            break
+        if line.lstrip().startswith("#"):
+            continue
+        body.append(line)
+    return "\n".join(body)
+
+
+def _workflow_governance_contract(workflow: str) -> None:
+    lines = workflow.splitlines()
+    jobs = _workflow_jobs(lines)
+    profiles = _workflow_permissions(lines, jobs)
+    steps = [step for job in jobs for step in _job_steps(lines, job)]
+    guards = [
+        (step, name)
+        for step in steps
+        if (name := _step_name(lines, step)) in GOVERNANCE_REAUTHORIZATION_CONTRACTS
+    ]
+    if len(guards) != 1:
+        raise BoundaryError("publisher workflow does not bind native governance reauthorization")
+    guard, name = guards[0]
+    token_name, command_kind = GOVERNANCE_REAUTHORIZATION_CONTRACTS[name]
+    guard_environment = _step_environment(lines, guard)
+    if guard_environment.get(token_name) != NATIVE_GOVERNANCE_TOKEN:
+        raise BoundaryError("publisher workflow does not bind native governance reauthorization")
+    run = _step_run(lines, guard)
+    if command_kind == "static":
+        command_ok = re.search(
+            r'(?m)^\s*(?:python|"\$PUBLISHER_PYTHON")\s+(?:-I\s+)?scripts/hf_static_space\.py\s+guard\b[^\n]*--source-sha\b',
+            run,
+        ) is not None
+    else:
+        command_ok = (
+            re.search(r"(?m)^\s*curl\s+--fail\b", run) is not None
+            and "/branches/main" in run
+            and re.search(
+                r'(?m)^\s*test\s+"\$live_sha"\s*=\s*"\$GITHUB_SHA"\s*$',
+                run,
+            )
+            is not None
+        )
+    if not command_ok:
+        raise BoundaryError("governance reauthorization command is not executable in its named step")
+    secret = "secrets.HF_TOKEN"
+    hf_steps = [
+        step
+        for step in steps
+        if secret in "\n".join(lines[step["start"] : step["end"]])
+    ]
+    if not hf_steps or sum(
+        "\n".join(lines[step["start"] : step["end"]]).count(secret)
+        for step in hf_steps
+    ) != workflow.count(secret):
+        raise BoundaryError("HF secret consumption occurs outside a parsed workflow step")
+    for step in hf_steps:
+        environment = _step_environment(lines, step)
+        if (
+            step["job"] != guard["job"]
+            or step["start"] <= guard["start"]
+            or environment.get(token_name) != NATIVE_GOVERNANCE_TOKEN
+        ):
+            raise BoundaryError("native governance reauthorization is not ordered before every HF secret consumer")
+    if frozenset(profiles[guard["job"]].items()) != RELEASE_PERMISSION_PROFILE:
+        raise BoundaryError("native governance permissions are not exact for the release job")
+
+
 def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -> None:
     contract = entry["publisher_contract"]
     try:
@@ -424,23 +703,9 @@ def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -
         raise BoundaryError("publisher workflow contains an unpinned or local action")
     if any(marker in workflow for marker in LEGACY_GOVERNANCE_CREDENTIAL_MARKERS):
         raise BoundaryError("publisher workflow retains a legacy privileged governance credential")
-    if "permission-actions:" in workflow or "secrets: inherit" in workflow:
+    if "secrets: inherit" in workflow:
         raise BoundaryError("publisher workflow expands permissions or inherits secrets")
-    native_positions = [
-        workflow.find(binding)
-        for binding in NATIVE_GOVERNANCE_TOKEN_BINDINGS
-        if binding in workflow
-    ]
-    guards = [
-        step for step in GOVERNANCE_REAUTHORIZATION_STEPS if step in workflow
-    ]
-    hf_at = workflow.find("HF_TOKEN")
-    if len(guards) != 1 or not native_positions or hf_at < 0:
-        raise BoundaryError("publisher workflow does not bind native governance reauthorization")
-    guard_at = workflow.find(guards[0])
-    native_at = min(native_positions)
-    if not guard_at < native_at < hf_at:
-        raise BoundaryError("native governance reauthorization is not ordered before the HF secret")
+    _workflow_governance_contract(workflow)
     if contract["isolated_invocation"] not in workflow:
         raise BoundaryError("publisher invocation is not isolated from repository modules")
     for marker in contract["required_workflow_markers"]:
