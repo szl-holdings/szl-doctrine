@@ -8,7 +8,7 @@
                                                             "observed_candidate_sha":  "2bd75342f2bbc39be0e4dd93356b42c10574e489",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                           ".github/workflows/hf-static-space.yml":  "aa5925895b6f63a03a637662206027ae2c110543"
+                                                           ".github/workflows/hf-static-space.yml":  "93fcba8e1738fd16237d5f3437f82d3ec424b761"
                                                                                },
                                                             "secret_execution_files":  {
                                                                                            ".hf-space.json":  "1819b0cd12e8defb8c81bcb267461ce5b5e35ab980b6c80c3d22a3e55785714b",
