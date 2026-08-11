@@ -169,12 +169,12 @@ class BoundaryTests(unittest.TestCase):
                 for name, item in manifest["targets"].items()
             },
             {
-                "szl-holdings/energy-attest-holo": "691c898cd6267fa2c5180ef2cbdf25a477c26149",
-                "szl-holdings/governed-norm-holo": "b720e8a3fe413e7dd6cf5c5fdd3691c5523c3e26",
-                "szl-holdings/lambda-gate-holo": "b8a2dce95f6212484c8e448b4f2a778e57082177",
-                "szl-holdings/receipt-chain-live": "3a42763b8301aea481ce49296f1d98138e298a46",
+                "szl-holdings/energy-attest-holo": "2bd75342f2bbc39be0e4dd93356b42c10574e489",
+                "szl-holdings/governed-norm-holo": "2aff8ff63f0bd8c449a8bf0dcfabd146e912c9c1",
+                "szl-holdings/lambda-gate-holo": "6bde251c3f37b003cb0754b69b4c63e04c634971",
+                "szl-holdings/receipt-chain-live": "d8b2192d378aec9761034dd471045a0e1d36d92e",
                 "szl-holdings/szl-kernels-live": None,
-                "szl-holdings/szl-provctl-live": "c795792d5560a8384f892c808e5929c53defdcc3",
+                "szl-holdings/szl-provctl-live": "98ba2d50833d0d8215c54d4b415e6c0578315219",
             },
         )
         for name, item in manifest["targets"].items():

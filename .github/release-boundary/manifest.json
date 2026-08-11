@@ -1,535 +1,630 @@
 {
-    "schema":  "szl.release-boundary-manifest/v1",
-    "source_repository":  "szl-holdings/szl-doctrine",
-    "targets":  {
-                    "szl-holdings/energy-attest-holo":  {
-                                                            "repository_id":  1295929955,
-                                                            "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "691c898cd6267fa2c5180ef2cbdf25a477c26149",
-                                                            "pending_reason":  null,
-                                                            "workflow_files":  {
-                                                                                   ".github/workflows/hf-static-space.yml":  "dba23a071a38d1c098e3fa0542a7f234cb655c1e749dd8fcc24ce3f9d6f36a54"
-                                                                               },
-                                                            "secret_execution_files":  {
-                                                                                           ".hf-space.json":  "1819b0cd12e8defb8c81bcb267461ce5b5e35ab980b6c80c3d22a3e55785714b",
-                                                                                           "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                                                                                           "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                           "scripts/hf_static_space.py":  "d05dc7a20ce86705393be61a15adf105418c0613a72b468c405ed887c93208db",
-                                                                                           "tests/test_hf_static_space.py":  "250c6136f6d8224015f40c72a20fbf829ea0794c578e5262038b94a1e3d85741"
-                                                                                       },
-                                                            "mutable_public_assets":  [
-                                                                                          "LICENSE",
-                                                                                          "README.md",
-                                                                                          "index.html"
-                                                                                      ],
-                                                            "publisher_contract":  {
-                                                                                       "publisher_workflow":  ".github/workflows/hf-static-space.yml",
-                                                                                       "publisher_script":  "scripts/hf_static_space.py",
-                                                                                       "dependency_lock":  "requirements/hf-publisher.lock",
-                                                                                       "protected_execution_roots":  [
-                                                                                                                         "scripts",
-                                                                                                                         "tests"
-                                                                                                                     ],
-                                                                                       "isolated_invocation":  "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
-                                                                                       "identities":  [
-                                                                                                          {
-                                                                                                              "kind":  "json",
-                                                                                                              "path":  ".hf-space.json",
-                                                                                                              "source_repository":  "szl-holdings/energy-attest-holo",
-                                                                                                              "target":  "SZLHOLDINGS/energy-attest-holo"
-                                                                                                          }
-                                                                                                      ],
-                                                                                       "required_workflow_markers":  [
-                                                                                                                         "on:",
-                                                                                                                         "push:",
-                                                                                                                         "branches: [main]",
-                                                                                                                         "permissions: {}",
-                                                                                                                         "contents: read",
-                                                                                                                         "id-token: write",
-                                                                                                                         "attestations: write",
-                                                                                                                         "concurrency:",
-                                                                                                                         "cancel-in-progress: false",
-                                                                                                                         "authorize-exact-governed-merge",
-                                                                                                                         "publish-exact-protected-main",
-                                                                                                                         "measure-exact-publication",
-                                                                                                                         "attest-exact-publication",
-                                                                                                                         "needs.authorize.result == \u0027success\u0027",
-                                                                                                                         "include-hidden-files: true",
-                                                                                                                         "Rebind five publisher inputs before interpretation or credentials",
-                                                                                                                         "GITHUB_TOKEN: ${{ github.token }}",
-                                                                                                                         "HF_TOKEN: ${{ secrets.HF_TOKEN }}"
-                                                                                                                     ],
-                                                                                       "required_publisher_markers":  [
-                                                                                                                          "parent_commit=before_sha",
-                                                                                                                          "delete_patterns=\"*\"",
-                                                                                                                          "szl.github-governed-merge/v3",
-                                                                                                                          "szl.pr-head/v1",
-                                                                                                                          "load_governed_merge",
-                                                                                                                          "required_workflow",
-                                                                                                                          "final_authorization = require_governed_main",
-                                                                                                                          "verify_live_tree",
-                                                                                                                          "_fetch_public_index",
-                                                                                                                          "failure_output_path",
-                                                                                                                          "run_attempt",
-                                                                                                                          "check_suite_id",
-                                                                                                                          "publisher_executable_rebind",
-                                                                                                                          "governance_authorization",
-                                                                                                                          "publisher_environment",
-                                                                                                                          "measurement_evidence_upload",
-                                                                                                                          "OIDC_ATTESTED_DEPLOYMENT",
-                                                                                                                          "WORKFLOW_STAGE_FAILURE",
-                                                                                                                          "receipt_minted"
-                                                                                                                      ]
-                                                                                   }
-                                                        },
-                    "szl-holdings/governed-norm-holo":  {
-                                                            "repository_id":  1295931607,
-                                                            "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "b720e8a3fe413e7dd6cf5c5fdd3691c5523c3e26",
-                                                            "pending_reason":  null,
-                                                            "workflow_files":  {
-                                                                                   ".github/workflows/hf-static-space.yml":  "dba23a071a38d1c098e3fa0542a7f234cb655c1e749dd8fcc24ce3f9d6f36a54"
-                                                                               },
-                                                            "secret_execution_files":  {
-                                                                                           ".hf-space.json":  "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
-                                                                                           "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                                                                                           "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                           "scripts/hf_static_space.py":  "d05dc7a20ce86705393be61a15adf105418c0613a72b468c405ed887c93208db",
-                                                                                           "tests/test_hf_static_space.py":  "250c6136f6d8224015f40c72a20fbf829ea0794c578e5262038b94a1e3d85741"
-                                                                                       },
-                                                            "mutable_public_assets":  [
-                                                                                          "LICENSE",
-                                                                                          "README.md",
-                                                                                          "index.html"
-                                                                                      ],
-                                                            "publisher_contract":  {
-                                                                                       "publisher_workflow":  ".github/workflows/hf-static-space.yml",
-                                                                                       "publisher_script":  "scripts/hf_static_space.py",
-                                                                                       "dependency_lock":  "requirements/hf-publisher.lock",
-                                                                                       "protected_execution_roots":  [
-                                                                                                                         "scripts",
-                                                                                                                         "tests"
-                                                                                                                     ],
-                                                                                       "isolated_invocation":  "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
-                                                                                       "identities":  [
-                                                                                                          {
-                                                                                                              "kind":  "json",
-                                                                                                              "path":  ".hf-space.json",
-                                                                                                              "source_repository":  "szl-holdings/governed-norm-holo",
-                                                                                                              "target":  "SZLHOLDINGS/governed-norm-holo"
-                                                                                                          }
-                                                                                                      ],
-                                                                                       "required_workflow_markers":  [
-                                                                                                                         "on:",
-                                                                                                                         "push:",
-                                                                                                                         "branches: [main]",
-                                                                                                                         "permissions: {}",
-                                                                                                                         "contents: read",
-                                                                                                                         "id-token: write",
-                                                                                                                         "attestations: write",
-                                                                                                                         "concurrency:",
-                                                                                                                         "cancel-in-progress: false",
-                                                                                                                         "authorize-exact-governed-merge",
-                                                                                                                         "publish-exact-protected-main",
-                                                                                                                         "measure-exact-publication",
-                                                                                                                         "attest-exact-publication",
-                                                                                                                         "needs.authorize.result == \u0027success\u0027",
-                                                                                                                         "include-hidden-files: true",
-                                                                                                                         "Rebind five publisher inputs before interpretation or credentials",
-                                                                                                                         "GITHUB_TOKEN: ${{ github.token }}",
-                                                                                                                         "HF_TOKEN: ${{ secrets.HF_TOKEN }}"
-                                                                                                                     ],
-                                                                                       "required_publisher_markers":  [
-                                                                                                                          "parent_commit=before_sha",
-                                                                                                                          "delete_patterns=\"*\"",
-                                                                                                                          "szl.github-governed-merge/v3",
-                                                                                                                          "szl.pr-head/v1",
-                                                                                                                          "load_governed_merge",
-                                                                                                                          "required_workflow",
-                                                                                                                          "final_authorization = require_governed_main",
-                                                                                                                          "verify_live_tree",
-                                                                                                                          "_fetch_public_index",
-                                                                                                                          "failure_output_path",
-                                                                                                                          "run_attempt",
-                                                                                                                          "check_suite_id",
-                                                                                                                          "publisher_executable_rebind",
-                                                                                                                          "governance_authorization",
-                                                                                                                          "publisher_environment",
-                                                                                                                          "measurement_evidence_upload",
-                                                                                                                          "OIDC_ATTESTED_DEPLOYMENT",
-                                                                                                                          "WORKFLOW_STAGE_FAILURE",
-                                                                                                                          "receipt_minted"
-                                                                                                                      ]
-                                                                                   }
-                                                        },
-                    "szl-holdings/lambda-gate-holo":  {
-                                                          "repository_id":  1295931629,
-                                                          "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "b8a2dce95f6212484c8e448b4f2a778e57082177",
-                                                          "pending_reason":  null,
-                                                          "workflow_files":  {
-                                                                                 ".github/workflows/hf-static-space.yml":  "dba23a071a38d1c098e3fa0542a7f234cb655c1e749dd8fcc24ce3f9d6f36a54"
-                                                                             },
-                                                          "secret_execution_files":  {
-                                                                                         ".hf-space.json":  "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
-                                                                                         "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                                                                                         "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                         "scripts/hf_static_space.py":  "d05dc7a20ce86705393be61a15adf105418c0613a72b468c405ed887c93208db",
-                                                                                         "tests/test_hf_static_space.py":  "250c6136f6d8224015f40c72a20fbf829ea0794c578e5262038b94a1e3d85741"
-                                                                                     },
-                                                          "mutable_public_assets":  [
-                                                                                        "LICENSE",
-                                                                                        "README.md",
-                                                                                        "index.html"
-                                                                                    ],
-                                                          "publisher_contract":  {
-                                                                                     "publisher_workflow":  ".github/workflows/hf-static-space.yml",
-                                                                                     "publisher_script":  "scripts/hf_static_space.py",
-                                                                                     "dependency_lock":  "requirements/hf-publisher.lock",
-                                                                                     "protected_execution_roots":  [
-                                                                                                                       "scripts",
-                                                                                                                       "tests"
-                                                                                                                   ],
-                                                                                     "isolated_invocation":  "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
-                                                                                     "identities":  [
-                                                                                                        {
-                                                                                                            "kind":  "json",
-                                                                                                            "path":  ".hf-space.json",
-                                                                                                            "source_repository":  "szl-holdings/lambda-gate-holo",
-                                                                                                            "target":  "SZLHOLDINGS/lambda-gate-holo"
-                                                                                                        }
-                                                                                                    ],
-                                                                                     "required_workflow_markers":  [
-                                                                                                                       "on:",
-                                                                                                                       "push:",
-                                                                                                                       "branches: [main]",
-                                                                                                                       "permissions: {}",
-                                                                                                                       "contents: read",
-                                                                                                                       "id-token: write",
-                                                                                                                       "attestations: write",
-                                                                                                                       "concurrency:",
-                                                                                                                       "cancel-in-progress: false",
-                                                                                                                       "authorize-exact-governed-merge",
-                                                                                                                       "publish-exact-protected-main",
-                                                                                                                       "measure-exact-publication",
-                                                                                                                       "attest-exact-publication",
-                                                                                                                       "needs.authorize.result == \u0027success\u0027",
-                                                                                                                       "include-hidden-files: true",
-                                                                                                                       "Rebind five publisher inputs before interpretation or credentials",
-                                                                                                                       "GITHUB_TOKEN: ${{ github.token }}",
-                                                                                                                       "HF_TOKEN: ${{ secrets.HF_TOKEN }}"
-                                                                                                                   ],
-                                                                                     "required_publisher_markers":  [
-                                                                                                                        "parent_commit=before_sha",
-                                                                                                                        "delete_patterns=\"*\"",
-                                                                                                                        "szl.github-governed-merge/v3",
-                                                                                                                        "szl.pr-head/v1",
-                                                                                                                        "load_governed_merge",
-                                                                                                                        "required_workflow",
-                                                                                                                        "final_authorization = require_governed_main",
-                                                                                                                        "verify_live_tree",
-                                                                                                                        "_fetch_public_index",
-                                                                                                                        "failure_output_path",
-                                                                                                                        "run_attempt",
-                                                                                                                        "check_suite_id",
-                                                                                                                        "publisher_executable_rebind",
-                                                                                                                        "governance_authorization",
-                                                                                                                        "publisher_environment",
-                                                                                                                        "measurement_evidence_upload",
-                                                                                                                        "OIDC_ATTESTED_DEPLOYMENT",
-                                                                                                                        "WORKFLOW_STAGE_FAILURE",
-                                                                                                                        "receipt_minted"
-                                                                                                                    ]
-                                                                                 }
-                                                      },
-                    "szl-holdings/receipt-chain-live":  {
-                                                            "repository_id":  1295940016,
-                                                            "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "3a42763b8301aea481ce49296f1d98138e298a46",
-                                                            "pending_reason":  null,
-                                                            "workflow_files":  {
-                                                                                   ".github/workflows/hf-static-space.yml":  "dba23a071a38d1c098e3fa0542a7f234cb655c1e749dd8fcc24ce3f9d6f36a54"
-                                                                               },
-                                                            "secret_execution_files":  {
-                                                                                           ".hf-space.json":  "4fc85a455d2ea0bb7222c166df55e663eb20cceb9caedf245373402dcd5f024e",
-                                                                                           "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                                                                                           "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                           "scripts/hf_static_space.py":  "d05dc7a20ce86705393be61a15adf105418c0613a72b468c405ed887c93208db",
-                                                                                           "tests/test_hf_static_space.py":  "250c6136f6d8224015f40c72a20fbf829ea0794c578e5262038b94a1e3d85741"
-                                                                                       },
-                                                            "mutable_public_assets":  [
-                                                                                          "LICENSE",
-                                                                                          "README.md",
-                                                                                          "index.html"
-                                                                                      ],
-                                                            "publisher_contract":  {
-                                                                                       "publisher_workflow":  ".github/workflows/hf-static-space.yml",
-                                                                                       "publisher_script":  "scripts/hf_static_space.py",
-                                                                                       "dependency_lock":  "requirements/hf-publisher.lock",
-                                                                                       "protected_execution_roots":  [
-                                                                                                                         "scripts",
-                                                                                                                         "tests"
-                                                                                                                     ],
-                                                                                       "isolated_invocation":  "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
-                                                                                       "identities":  [
-                                                                                                          {
-                                                                                                              "kind":  "json",
-                                                                                                              "path":  ".hf-space.json",
-                                                                                                              "source_repository":  "szl-holdings/receipt-chain-live",
-                                                                                                              "target":  "SZLHOLDINGS/receipt-chain-live"
-                                                                                                          }
-                                                                                                      ],
-                                                                                       "required_workflow_markers":  [
-                                                                                                                         "on:",
-                                                                                                                         "push:",
-                                                                                                                         "branches: [main]",
-                                                                                                                         "permissions: {}",
-                                                                                                                         "contents: read",
-                                                                                                                         "id-token: write",
-                                                                                                                         "attestations: write",
-                                                                                                                         "concurrency:",
-                                                                                                                         "cancel-in-progress: false",
-                                                                                                                         "authorize-exact-governed-merge",
-                                                                                                                         "publish-exact-protected-main",
-                                                                                                                         "measure-exact-publication",
-                                                                                                                         "attest-exact-publication",
-                                                                                                                         "needs.authorize.result == \u0027success\u0027",
-                                                                                                                         "include-hidden-files: true",
-                                                                                                                         "Rebind five publisher inputs before interpretation or credentials",
-                                                                                                                         "GITHUB_TOKEN: ${{ github.token }}",
-                                                                                                                         "HF_TOKEN: ${{ secrets.HF_TOKEN }}"
-                                                                                                                     ],
-                                                                                       "required_publisher_markers":  [
-                                                                                                                          "parent_commit=before_sha",
-                                                                                                                          "delete_patterns=\"*\"",
-                                                                                                                          "szl.github-governed-merge/v3",
-                                                                                                                          "szl.pr-head/v1",
-                                                                                                                          "load_governed_merge",
-                                                                                                                          "required_workflow",
-                                                                                                                          "final_authorization = require_governed_main",
-                                                                                                                          "verify_live_tree",
-                                                                                                                          "_fetch_public_index",
-                                                                                                                          "failure_output_path",
-                                                                                                                          "run_attempt",
-                                                                                                                          "check_suite_id",
-                                                                                                                          "publisher_executable_rebind",
-                                                                                                                          "governance_authorization",
-                                                                                                                          "publisher_environment",
-                                                                                                                          "measurement_evidence_upload",
-                                                                                                                          "OIDC_ATTESTED_DEPLOYMENT",
-                                                                                                                          "WORKFLOW_STAGE_FAILURE",
-                                                                                                                          "receipt_minted"
-                                                                                                                      ]
-                                                                                   }
-                                                        },
-                    "szl-holdings/szl-kernels-live":  {
-                                                          "repository_id":  1295941334,
-                                                          "state":  "PENDING",
-                                                          "observed_candidate_sha":  null,
-                                                          "pending_reason":  "Pending separately supplied and reviewed v3 kernel publisher receipt; no kernel candidate is authorized by this Doctrine revision.",
-                                                          "workflow_files":  {
-                                                                                 ".github/workflows/hf-space-deploy.yml":  "PENDING",
-                                                                                 ".github/workflows/kernel-contracts.yml":  "PENDING"
-                                                                             },
-                                                          "secret_execution_files":  {
-                                                                                         "requirements/hf-publisher.lock":  "PENDING",
-                                                                                         "scripts/build_hf_space_bundle.py":  "PENDING",
-                                                                                         "scripts/deploy_hf_space.py":  "PENDING",
-                                                                                         "scripts/kernel_portfolio_truth.mjs":  "PENDING",
-                                                                                         "scripts/snapshot_kernel_contracts.py":  "PENDING",
-                                                                                         "scripts/verify_kernel_registry.py":  "PENDING",
-                                                                                         "tests/fixtures/hf-static-window-huggingface-injection.html":  "PENDING",
-                                                                                         "tests/test_hf_space_bundle.py":  "PENDING",
-                                                                                         "tests/test_kernel_portfolio_truth.mjs":  "PENDING",
-                                                                                         "tests/test_kernel_registry.py":  "PENDING"
-                                                                                     },
-                                                          "mutable_public_assets":  [
-                                                                                        "LICENSE",
-                                                                                        "README.md",
-                                                                                        "contracts/governed-inference-meter/contract.json",
-                                                                                        "contracts/index.json",
-                                                                                        "contracts/szl-blocked/contract.json",
-                                                                                        "contracts/szl-formulas/contract.json",
-                                                                                        "contracts/szl-governed-norm/contract.json",
-                                                                                        "contracts/szl-govsign/contract.json",
-                                                                                        "contracts/szl-invariants/contract.json",
-                                                                                        "contracts/szl-kernels/contract.json",
-                                                                                        "contracts/szl-lambda-gate/contract.json",
-                                                                                        "contracts/szl-ouroboros/contract.json",
-                                                                                        "contracts/szl-provctl/contract.json",
-                                                                                        "evidence/kernel-selfcheck-20260726.json",
-                                                                                        "evidence/kernel-selfcheck-20260808.json",
-                                                                                        "index.html",
-                                                                                        "registry/kernel-pins.json",
-                                                                                        "schemas/kernel-contract.schema.json"
-                                                                                    ],
-                                                          "publisher_contract":  {
-                                                                                     "publisher_workflow":  ".github/workflows/hf-space-deploy.yml",
-                                                                                     "publisher_script":  "scripts/deploy_hf_space.py",
-                                                                                     "dependency_lock":  "requirements/hf-publisher.lock",
-                                                                                     "protected_execution_roots":  [
-                                                                                                                       "scripts",
-                                                                                                                       "tests"
-                                                                                                                   ],
-                                                                                     "isolated_invocation":  "\"$RUNNER_TEMP/hf-publisher-venv/bin/python\" -I -P scripts/deploy_hf_space.py",
-                                                                                     "identities":  [
-                                                                                                        {
-                                                                                                            "kind":  "python_constants",
-                                                                                                            "path":  "scripts/build_hf_space_bundle.py",
-                                                                                                            "source_repository":  "szl-holdings/szl-kernels-live",
-                                                                                                            "target":  "SZLHOLDINGS/szl-kernels-live"
-                                                                                                        },
-                                                                                                        {
-                                                                                                            "kind":  "python_constants",
-                                                                                                            "path":  "scripts/deploy_hf_space.py",
-                                                                                                            "source_repository":  "szl-holdings/szl-kernels-live",
-                                                                                                            "target":  "SZLHOLDINGS/szl-kernels-live"
-                                                                                                        }
-                                                                                                    ],
-                                                                                     "required_workflow_markers":  [
-                                                                                                                       "on:",
-                                                                                                                       "push:",
-                                                                                                                       "branches: [main]",
-                                                                                                                       "concurrency:",
-                                                                                                                       "cancel-in-progress: false",
-                                                                                                                       "timeout-minutes: 60",
-                                                                                                                       "Record cumulative job budget origin",
-                                                                                                                       "HF_TERMINAL_DEADLINE_EPOCH",
-                                                                                                                       "$((started_at + 3300))",
-                                                                                                                       "Reserve full terminal-evidence budget before mutation",
-                                                                                                                       "max_pre_mutation_seconds=900",
-                                                                                                                       "operation_remaining \u003c 1800",
-                                                                                                                       "GOVERNANCE_TOKEN: ${{ github.token }}",
-                                                                                                                       "HF_TOKEN",
-                                                                                                                       "python -I -P -m venv",
-                                                                                                                       "--require-hashes",
-                                                                                                                       "--only-binary=:all:",
-                                                                                                                       "Fetch pinned bounded attestation runtime before mutation",
-                                                                                                                       "Fetch pinned bounded artifact action before mutation",
-                                                                                                                       "Reauthorize exact protected main before credential use",
-                                                                                                                       "Synthesize deterministic canonical success receipt candidate",
-                                                                                                                       "Attest canonical final success receipt bytes",
-                                                                                                                       "DEADLINE_ACTION_INPUT_SUBJECT_PATH: ${{ runner.temp }}/hf-terminal-candidate/hf-canonical-success-receipt.json",
-                                                                                                                       "--action attest-build-provenance",
-                                                                                                                       "Upload required terminal success evidence",
-                                                                                                                       "--action upload",
-                                                                                                                       "Retry receipt-stage failure evidence upload",
-                                                                                                                       "Validate required failed-deployment receipt",
-                                                                                                                       "id: deployment-failure-receipt",
-                                                                                                                       "steps.deployment-failure-receipt.outcome == \u0027success\u0027",
-                                                                                                                       "deployment-failure-artifact-primary",
-                                                                                                                       "deployment-failure-artifact-retry",
-                                                                                                                       "--deployment-failure-artifact-primary-outcome",
-                                                                                                                       "--deployment-failure-artifact-retry-outcome",
-                                                                                                                       "enforce-terminal"
-                                                                                                                   ],
-                                                                                     "required_publisher_markers":  [
-                                                                                                                        "SOURCE_REPO",
-                                                                                                                        "SOURCE_RELATION",
-                                                                                                                        "HF_REPO",
-                                                                                                                        "parent_commit=parent_sha",
-                                                                                                                        "delete_patterns=\"*\"",
-                                                                                                                        "mutation_authorization = require_governed_main",
-                                                                                                                        "post_publication_main = require_governed_main",
-                                                                                                                        "validate_public_provenance",
-                                                                                                                        "_hf_upload_child_environment",
-                                                                                                                        "_kill_and_reap_child",
-                                                                                                                        "_is_exact_public_index_proof",
-                                                                                                                        "cross.public_index_normalized_sha256",
-                                                                                                                        "run_bounded_action",
-                                                                                                                        "attest-build-provenance",
-                                                                                                                        "include-hidden-files",
-                                                                                                                        "_manifest_tree_sha256",
-                                                                                                                        "upload_call_entered",
-                                                                                                                        "authoritative_readback_attempted",
-                                                                                                                        "FAILED_BEFORE_MUTATION",
-                                                                                                                        "synthesize_candidate_receipt",
-                                                                                                                        "finalize_attested_receipt",
-                                                                                                                        "require_receipt_failure_artifact",
-                                                                                                                        "require_deployment_failure_artifact",
-                                                                                                                        "PARTIAL_AFTER_MUTATION"
-                                                                                                                    ]
-                                                                                 }
-                                                      },
-                    "szl-holdings/szl-provctl-live":  {
-                                                          "repository_id":  1295941247,
-                                                          "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "c795792d5560a8384f892c808e5929c53defdcc3",
-                                                          "pending_reason":  null,
-                                                          "workflow_files":  {
-                                                                                 ".github/workflows/hf-static-space.yml":  "dba23a071a38d1c098e3fa0542a7f234cb655c1e749dd8fcc24ce3f9d6f36a54"
-                                                                             },
-                                                          "secret_execution_files":  {
-                                                                                         ".hf-space.json":  "24f23b8e01c6d53f82b387de9041d735007a78f175cf523dcefbca198ba193a4",
-                                                                                         "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                                                                                         "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                         "scripts/hf_static_space.py":  "d05dc7a20ce86705393be61a15adf105418c0613a72b468c405ed887c93208db",
-                                                                                         "tests/test_hf_static_space.py":  "250c6136f6d8224015f40c72a20fbf829ea0794c578e5262038b94a1e3d85741"
-                                                                                     },
-                                                          "mutable_public_assets":  [
-                                                                                        "LICENSE",
-                                                                                        "README.md",
-                                                                                        "index.html"
-                                                                                    ],
-                                                          "publisher_contract":  {
-                                                                                     "publisher_workflow":  ".github/workflows/hf-static-space.yml",
-                                                                                     "publisher_script":  "scripts/hf_static_space.py",
-                                                                                     "dependency_lock":  "requirements/hf-publisher.lock",
-                                                                                     "protected_execution_roots":  [
-                                                                                                                       "scripts",
-                                                                                                                       "tests"
-                                                                                                                   ],
-                                                                                     "isolated_invocation":  "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
-                                                                                     "identities":  [
-                                                                                                        {
-                                                                                                            "kind":  "json",
-                                                                                                            "path":  ".hf-space.json",
-                                                                                                            "source_repository":  "szl-holdings/szl-provctl-live",
-                                                                                                            "target":  "SZLHOLDINGS/szl-provctl-live"
-                                                                                                        }
-                                                                                                    ],
-                                                                                     "required_workflow_markers":  [
-                                                                                                                       "on:",
-                                                                                                                       "push:",
-                                                                                                                       "branches: [main]",
-                                                                                                                       "permissions: {}",
-                                                                                                                       "contents: read",
-                                                                                                                       "id-token: write",
-                                                                                                                       "attestations: write",
-                                                                                                                       "concurrency:",
-                                                                                                                       "cancel-in-progress: false",
-                                                                                                                       "authorize-exact-governed-merge",
-                                                                                                                       "publish-exact-protected-main",
-                                                                                                                       "measure-exact-publication",
-                                                                                                                       "attest-exact-publication",
-                                                                                                                       "needs.authorize.result == \u0027success\u0027",
-                                                                                                                       "include-hidden-files: true",
-                                                                                                                       "Rebind five publisher inputs before interpretation or credentials",
-                                                                                                                       "GITHUB_TOKEN: ${{ github.token }}",
-                                                                                                                       "HF_TOKEN: ${{ secrets.HF_TOKEN }}"
-                                                                                                                   ],
-                                                                                     "required_publisher_markers":  [
-                                                                                                                        "parent_commit=before_sha",
-                                                                                                                        "delete_patterns=\"*\"",
-                                                                                                                        "szl.github-governed-merge/v3",
-                                                                                                                        "szl.pr-head/v1",
-                                                                                                                        "load_governed_merge",
-                                                                                                                        "required_workflow",
-                                                                                                                        "final_authorization = require_governed_main",
-                                                                                                                        "verify_live_tree",
-                                                                                                                        "_fetch_public_index",
-                                                                                                                        "failure_output_path",
-                                                                                                                        "run_attempt",
-                                                                                                                        "check_suite_id",
-                                                                                                                        "publisher_executable_rebind",
-                                                                                                                        "governance_authorization",
-                                                                                                                        "publisher_environment",
-                                                                                                                        "measurement_evidence_upload",
-                                                                                                                        "OIDC_ATTESTED_DEPLOYMENT",
-                                                                                                                        "WORKFLOW_STAGE_FAILURE",
-                                                                                                                        "receipt_minted"
-                                                                                                                    ]
-                                                                                 }
-                                                      }
-                }
+  "schema": "szl.release-boundary-manifest/v1",
+  "source_repository": "szl-holdings/szl-doctrine",
+  "targets": {
+    "szl-holdings/energy-attest-holo": {
+      "repository_id": 1295929955,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "2bd75342f2bbc39be0e4dd93356b42c10574e489",
+      "pending_reason": null,
+      "workflow_files": {
+        ".github/workflows/hf-static-space.yml": "4120d1a9d147bcf85ea9920dd884ef9c440f583163759beaa1ad7a6afbf82254"
+      },
+      "secret_execution_files": {
+        ".hf-space.json": "1819b0cd12e8defb8c81bcb267461ce5b5e35ab980b6c80c3d22a3e55785714b",
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "requirements/hf-validator.lock": "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
+        "scripts/hf_static_space.py": "c8cd931e696dc852e2f801efef0222a9096ae1cf7bac384f5a69f676d76e3b7d",
+        "tests/test_hf_static_space.py": "776c3444e6a56cfc541a34e26f23d9c7363f18a8c24cd816d6149c2b9c876290"
+      },
+      "mutable_public_assets": [
+        "LICENSE",
+        "README.md",
+        "index.html"
+      ],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-static-space.yml",
+        "publisher_script": "scripts/hf_static_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": [
+          "scripts",
+          "tests"
+        ],
+        "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
+        "identities": [
+          {
+            "kind": "json",
+            "path": ".hf-space.json",
+            "source_repository": "szl-holdings/energy-attest-holo",
+            "target": "SZLHOLDINGS/energy-attest-holo"
+          }
+        ],
+        "required_workflow_markers": [
+          "on:",
+          "push:",
+          "branches: [main]",
+          "permissions: {}",
+          "contents: read",
+          "id-token: write",
+          "attestations: write",
+          "concurrency:",
+          "cancel-in-progress: false",
+          "authorize-exact-governed-merge",
+          "publish-exact-protected-main",
+          "measure-exact-publication",
+          "attest-exact-publication",
+          "needs.authorize.result == 'success'",
+          "needs.deploy.outputs.publisher-freshness-outcome == 'success'",
+          "include-hidden-files: true",
+          "Rebind five publisher inputs before interpretation or credentials",
+          "GITHUB_TOKEN: ${{ github.token }}",
+          "HF_TOKEN: ${{ secrets.HF_TOKEN }}",
+          "Rebind five measurement inputs before interpretation or credentials",
+          "measurement-hardening-outcome",
+          "measurement-input-outcome",
+          "measurement-rebind-outcome",
+          "measurement-publisher-evidence-outcome",
+          "measurement-environment-outcome",
+          "publisher-freshness-outcome",
+          "artifact-run-attempt: ${{ github.run_attempt }}",
+          "needs.measure.outputs.measurement-hardening-outcome == 'success'",
+          "needs.measure.outputs.measurement-input-outcome == 'success'",
+          "needs.measure.outputs.measurement-rebind-outcome == 'success'",
+          "needs.measure.outputs.measurement-publisher-evidence-outcome == 'success'",
+          "needs.measure.outputs.measurement-environment-outcome == 'success'",
+          "measurement-hardening",
+          "measurement-input",
+          "measurement-rebind",
+          "measurement-publisher-evidence",
+          "measurement-environment"
+        ],
+        "required_publisher_markers": [
+          "parent_commit=before_sha",
+          "delete_patterns=\"*\"",
+          "szl.github-governed-merge/v3",
+          "szl.pr-head/v1",
+          "load_governed_merge",
+          "required_workflow",
+          "final_authorization = require_governed_main",
+          "verify_live_tree",
+          "_fetch_public_index",
+          "failure_output_path",
+          "run_attempt",
+          "check_suite_id",
+          "publisher_executable_rebind",
+          "governance_authorization",
+          "publisher_environment",
+          "measurement_evidence_upload",
+          "OIDC_ATTESTED_DEPLOYMENT",
+          "WORKFLOW_STAGE_FAILURE",
+          "receipt_minted"
+        ]
+      }
+    },
+    "szl-holdings/governed-norm-holo": {
+      "repository_id": 1295931607,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "2aff8ff63f0bd8c449a8bf0dcfabd146e912c9c1",
+      "pending_reason": null,
+      "workflow_files": {
+        ".github/workflows/hf-static-space.yml": "cbb90b7cf33d83b02ef7837c583852f01b1af1d9c165a54dbcbbaeb2349ec95e"
+      },
+      "secret_execution_files": {
+        ".hf-space.json": "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "requirements/hf-validator.lock": "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
+        "scripts/hf_static_space.py": "6936002f5d700aab8b6be7a3ca8763c47f0314fefca308daef86f347a7d2c0ed",
+        "tests/test_hf_static_space.py": "c4e87d02c8b550ec54ae7a41849db74e987f9aefbde1a4625f0854a4acc76f26"
+      },
+      "mutable_public_assets": [
+        "LICENSE",
+        "README.md",
+        "index.html"
+      ],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-static-space.yml",
+        "publisher_script": "scripts/hf_static_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": [
+          "scripts",
+          "tests"
+        ],
+        "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
+        "identities": [
+          {
+            "kind": "json",
+            "path": ".hf-space.json",
+            "source_repository": "szl-holdings/governed-norm-holo",
+            "target": "SZLHOLDINGS/governed-norm-holo"
+          }
+        ],
+        "required_workflow_markers": [
+          "on:",
+          "push:",
+          "branches: [main]",
+          "permissions: {}",
+          "contents: read",
+          "id-token: write",
+          "attestations: write",
+          "concurrency:",
+          "cancel-in-progress: false",
+          "authorize-exact-governed-merge",
+          "publish-exact-protected-main",
+          "measure-exact-publication",
+          "attest-exact-publication",
+          "needs.authorize.result == 'success'",
+          "needs.deploy.outputs.publisher-freshness-outcome == 'success'",
+          "include-hidden-files: true",
+          "Rebind five publisher inputs before interpretation or credentials",
+          "GITHUB_TOKEN: ${{ github.token }}",
+          "HF_TOKEN: ${{ secrets.HF_TOKEN }}",
+          "Rebind five measurement inputs before interpretation or credentials",
+          "measurement-hardening-outcome",
+          "measurement-input-outcome",
+          "measurement-rebind-outcome",
+          "measurement-publisher-evidence-outcome",
+          "measurement-environment-outcome",
+          "publisher-freshness-outcome",
+          "artifact-run-attempt: ${{ github.run_attempt }}",
+          "needs.measure.outputs.measurement-hardening-outcome == 'success'",
+          "needs.measure.outputs.measurement-input-outcome == 'success'",
+          "needs.measure.outputs.measurement-rebind-outcome == 'success'",
+          "needs.measure.outputs.measurement-publisher-evidence-outcome == 'success'",
+          "needs.measure.outputs.measurement-environment-outcome == 'success'",
+          "measurement-hardening",
+          "measurement-input",
+          "measurement-rebind",
+          "measurement-publisher-evidence",
+          "measurement-environment"
+        ],
+        "required_publisher_markers": [
+          "parent_commit=before_sha",
+          "delete_patterns=\"*\"",
+          "szl.github-governed-merge/v3",
+          "szl.pr-head/v1",
+          "load_governed_merge",
+          "required_workflow",
+          "final_authorization = require_governed_main",
+          "verify_live_tree",
+          "_fetch_public_index",
+          "failure_output_path",
+          "run_attempt",
+          "check_suite_id",
+          "publisher_executable_rebind",
+          "governance_authorization",
+          "publisher_environment",
+          "measurement_evidence_upload",
+          "OIDC_ATTESTED_DEPLOYMENT",
+          "WORKFLOW_STAGE_FAILURE",
+          "receipt_minted"
+        ]
+      }
+    },
+    "szl-holdings/lambda-gate-holo": {
+      "repository_id": 1295931629,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "6bde251c3f37b003cb0754b69b4c63e04c634971",
+      "pending_reason": null,
+      "workflow_files": {
+        ".github/workflows/hf-static-space.yml": "cbb90b7cf33d83b02ef7837c583852f01b1af1d9c165a54dbcbbaeb2349ec95e"
+      },
+      "secret_execution_files": {
+        ".hf-space.json": "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "requirements/hf-validator.lock": "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
+        "scripts/hf_static_space.py": "6936002f5d700aab8b6be7a3ca8763c47f0314fefca308daef86f347a7d2c0ed",
+        "tests/test_hf_static_space.py": "c4e87d02c8b550ec54ae7a41849db74e987f9aefbde1a4625f0854a4acc76f26"
+      },
+      "mutable_public_assets": [
+        "LICENSE",
+        "README.md",
+        "index.html"
+      ],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-static-space.yml",
+        "publisher_script": "scripts/hf_static_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": [
+          "scripts",
+          "tests"
+        ],
+        "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
+        "identities": [
+          {
+            "kind": "json",
+            "path": ".hf-space.json",
+            "source_repository": "szl-holdings/lambda-gate-holo",
+            "target": "SZLHOLDINGS/lambda-gate-holo"
+          }
+        ],
+        "required_workflow_markers": [
+          "on:",
+          "push:",
+          "branches: [main]",
+          "permissions: {}",
+          "contents: read",
+          "id-token: write",
+          "attestations: write",
+          "concurrency:",
+          "cancel-in-progress: false",
+          "authorize-exact-governed-merge",
+          "publish-exact-protected-main",
+          "measure-exact-publication",
+          "attest-exact-publication",
+          "needs.authorize.result == 'success'",
+          "needs.deploy.outputs.publisher-freshness-outcome == 'success'",
+          "include-hidden-files: true",
+          "Rebind five publisher inputs before interpretation or credentials",
+          "GITHUB_TOKEN: ${{ github.token }}",
+          "HF_TOKEN: ${{ secrets.HF_TOKEN }}",
+          "Rebind five measurement inputs before interpretation or credentials",
+          "measurement-hardening-outcome",
+          "measurement-input-outcome",
+          "measurement-rebind-outcome",
+          "measurement-publisher-evidence-outcome",
+          "measurement-environment-outcome",
+          "publisher-freshness-outcome",
+          "artifact-run-attempt: ${{ github.run_attempt }}",
+          "needs.measure.outputs.measurement-hardening-outcome == 'success'",
+          "needs.measure.outputs.measurement-input-outcome == 'success'",
+          "needs.measure.outputs.measurement-rebind-outcome == 'success'",
+          "needs.measure.outputs.measurement-publisher-evidence-outcome == 'success'",
+          "needs.measure.outputs.measurement-environment-outcome == 'success'",
+          "measurement-hardening",
+          "measurement-input",
+          "measurement-rebind",
+          "measurement-publisher-evidence",
+          "measurement-environment"
+        ],
+        "required_publisher_markers": [
+          "parent_commit=before_sha",
+          "delete_patterns=\"*\"",
+          "szl.github-governed-merge/v3",
+          "szl.pr-head/v1",
+          "load_governed_merge",
+          "required_workflow",
+          "final_authorization = require_governed_main",
+          "verify_live_tree",
+          "_fetch_public_index",
+          "failure_output_path",
+          "run_attempt",
+          "check_suite_id",
+          "publisher_executable_rebind",
+          "governance_authorization",
+          "publisher_environment",
+          "measurement_evidence_upload",
+          "OIDC_ATTESTED_DEPLOYMENT",
+          "WORKFLOW_STAGE_FAILURE",
+          "receipt_minted"
+        ]
+      }
+    },
+    "szl-holdings/receipt-chain-live": {
+      "repository_id": 1295940016,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "d8b2192d378aec9761034dd471045a0e1d36d92e",
+      "pending_reason": null,
+      "workflow_files": {
+        ".github/workflows/hf-static-space.yml": "cbb90b7cf33d83b02ef7837c583852f01b1af1d9c165a54dbcbbaeb2349ec95e"
+      },
+      "secret_execution_files": {
+        ".hf-space.json": "4fc85a455d2ea0bb7222c166df55e663eb20cceb9caedf245373402dcd5f024e",
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "requirements/hf-validator.lock": "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
+        "scripts/hf_static_space.py": "6936002f5d700aab8b6be7a3ca8763c47f0314fefca308daef86f347a7d2c0ed",
+        "tests/test_hf_static_space.py": "c4e87d02c8b550ec54ae7a41849db74e987f9aefbde1a4625f0854a4acc76f26"
+      },
+      "mutable_public_assets": [
+        "LICENSE",
+        "README.md",
+        "index.html"
+      ],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-static-space.yml",
+        "publisher_script": "scripts/hf_static_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": [
+          "scripts",
+          "tests"
+        ],
+        "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
+        "identities": [
+          {
+            "kind": "json",
+            "path": ".hf-space.json",
+            "source_repository": "szl-holdings/receipt-chain-live",
+            "target": "SZLHOLDINGS/receipt-chain-live"
+          }
+        ],
+        "required_workflow_markers": [
+          "on:",
+          "push:",
+          "branches: [main]",
+          "permissions: {}",
+          "contents: read",
+          "id-token: write",
+          "attestations: write",
+          "concurrency:",
+          "cancel-in-progress: false",
+          "authorize-exact-governed-merge",
+          "publish-exact-protected-main",
+          "measure-exact-publication",
+          "attest-exact-publication",
+          "needs.authorize.result == 'success'",
+          "needs.deploy.outputs.publisher-freshness-outcome == 'success'",
+          "include-hidden-files: true",
+          "Rebind five publisher inputs before interpretation or credentials",
+          "GITHUB_TOKEN: ${{ github.token }}",
+          "HF_TOKEN: ${{ secrets.HF_TOKEN }}",
+          "Rebind five measurement inputs before interpretation or credentials",
+          "measurement-hardening-outcome",
+          "measurement-input-outcome",
+          "measurement-rebind-outcome",
+          "measurement-publisher-evidence-outcome",
+          "measurement-environment-outcome",
+          "publisher-freshness-outcome",
+          "artifact-run-attempt: ${{ github.run_attempt }}",
+          "needs.measure.outputs.measurement-hardening-outcome == 'success'",
+          "needs.measure.outputs.measurement-input-outcome == 'success'",
+          "needs.measure.outputs.measurement-rebind-outcome == 'success'",
+          "needs.measure.outputs.measurement-publisher-evidence-outcome == 'success'",
+          "needs.measure.outputs.measurement-environment-outcome == 'success'",
+          "measurement-hardening",
+          "measurement-input",
+          "measurement-rebind",
+          "measurement-publisher-evidence",
+          "measurement-environment"
+        ],
+        "required_publisher_markers": [
+          "parent_commit=before_sha",
+          "delete_patterns=\"*\"",
+          "szl.github-governed-merge/v3",
+          "szl.pr-head/v1",
+          "load_governed_merge",
+          "required_workflow",
+          "final_authorization = require_governed_main",
+          "verify_live_tree",
+          "_fetch_public_index",
+          "failure_output_path",
+          "run_attempt",
+          "check_suite_id",
+          "publisher_executable_rebind",
+          "governance_authorization",
+          "publisher_environment",
+          "measurement_evidence_upload",
+          "OIDC_ATTESTED_DEPLOYMENT",
+          "WORKFLOW_STAGE_FAILURE",
+          "receipt_minted"
+        ]
+      }
+    },
+    "szl-holdings/szl-kernels-live": {
+      "repository_id": 1295941334,
+      "state": "PENDING",
+      "observed_candidate_sha": null,
+      "pending_reason": "separately supplied and reviewed v3 kernel publisher receipt",
+      "workflow_files": {
+        ".github/workflows/hf-space-deploy.yml": "PENDING",
+        ".github/workflows/kernel-contracts.yml": "PENDING"
+      },
+      "secret_execution_files": {
+        "requirements/hf-publisher.lock": "PENDING",
+        "scripts/build_hf_space_bundle.py": "PENDING",
+        "scripts/deploy_hf_space.py": "PENDING",
+        "scripts/kernel_portfolio_truth.mjs": "PENDING",
+        "scripts/snapshot_kernel_contracts.py": "PENDING",
+        "scripts/verify_kernel_registry.py": "PENDING",
+        "tests/fixtures/hf-static-window-huggingface-injection.html": "PENDING",
+        "tests/test_hf_space_bundle.py": "PENDING",
+        "tests/test_kernel_portfolio_truth.mjs": "PENDING",
+        "tests/test_kernel_registry.py": "PENDING"
+      },
+      "mutable_public_assets": [
+        "LICENSE",
+        "README.md",
+        "contracts/governed-inference-meter/contract.json",
+        "contracts/index.json",
+        "contracts/szl-blocked/contract.json",
+        "contracts/szl-formulas/contract.json",
+        "contracts/szl-governed-norm/contract.json",
+        "contracts/szl-govsign/contract.json",
+        "contracts/szl-invariants/contract.json",
+        "contracts/szl-kernels/contract.json",
+        "contracts/szl-lambda-gate/contract.json",
+        "contracts/szl-ouroboros/contract.json",
+        "contracts/szl-provctl/contract.json",
+        "evidence/kernel-selfcheck-20260726.json",
+        "evidence/kernel-selfcheck-20260808.json",
+        "index.html",
+        "registry/kernel-pins.json",
+        "schemas/kernel-contract.schema.json"
+      ],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-space-deploy.yml",
+        "publisher_script": "scripts/deploy_hf_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": [
+          "scripts",
+          "tests"
+        ],
+        "isolated_invocation": "\"$RUNNER_TEMP/hf-publisher-venv/bin/python\" -I -P scripts/deploy_hf_space.py",
+        "identities": [
+          {
+            "kind": "python_constants",
+            "path": "scripts/build_hf_space_bundle.py",
+            "source_repository": "szl-holdings/szl-kernels-live",
+            "target": "SZLHOLDINGS/szl-kernels-live"
+          },
+          {
+            "kind": "python_constants",
+            "path": "scripts/deploy_hf_space.py",
+            "source_repository": "szl-holdings/szl-kernels-live",
+            "target": "SZLHOLDINGS/szl-kernels-live"
+          }
+        ],
+        "required_workflow_markers": [
+          "on:",
+          "push:",
+          "branches: [main]",
+          "concurrency:",
+          "cancel-in-progress: false",
+          "timeout-minutes: 60",
+          "Record cumulative job budget origin",
+          "HF_TERMINAL_DEADLINE_EPOCH",
+          "$((started_at + 3300))",
+          "Reserve full terminal-evidence budget before mutation",
+          "max_pre_mutation_seconds=900",
+          "operation_remaining < 1800",
+          "GOVERNANCE_TOKEN: ${{ github.token }}",
+          "HF_TOKEN",
+          "python -I -P -m venv",
+          "--require-hashes",
+          "--only-binary=:all:",
+          "Fetch pinned bounded attestation runtime before mutation",
+          "Fetch pinned bounded artifact action before mutation",
+          "Reauthorize exact protected main before credential use",
+          "Synthesize deterministic canonical success receipt candidate",
+          "Attest canonical final success receipt bytes",
+          "DEADLINE_ACTION_INPUT_SUBJECT_PATH: ${{ runner.temp }}/hf-terminal-candidate/hf-canonical-success-receipt.json",
+          "--action attest-build-provenance",
+          "Upload required terminal success evidence",
+          "--action upload",
+          "Retry receipt-stage failure evidence upload",
+          "Validate required failed-deployment receipt",
+          "id: deployment-failure-receipt",
+          "steps.deployment-failure-receipt.outcome == 'success'",
+          "deployment-failure-artifact-primary",
+          "deployment-failure-artifact-retry",
+          "--deployment-failure-artifact-primary-outcome",
+          "--deployment-failure-artifact-retry-outcome",
+          "enforce-terminal"
+        ],
+        "required_publisher_markers": [
+          "SOURCE_REPO",
+          "SOURCE_RELATION",
+          "HF_REPO",
+          "parent_commit=parent_sha",
+          "delete_patterns=\"*\"",
+          "mutation_authorization = require_governed_main",
+          "post_publication_main = require_governed_main",
+          "validate_public_provenance",
+          "_hf_upload_child_environment",
+          "_kill_and_reap_child",
+          "_is_exact_public_index_proof",
+          "cross.public_index_normalized_sha256",
+          "run_bounded_action",
+          "attest-build-provenance",
+          "include-hidden-files",
+          "_manifest_tree_sha256",
+          "upload_call_entered",
+          "authoritative_readback_attempted",
+          "FAILED_BEFORE_MUTATION",
+          "synthesize_candidate_receipt",
+          "finalize_attested_receipt",
+          "require_receipt_failure_artifact",
+          "require_deployment_failure_artifact",
+          "PARTIAL_AFTER_MUTATION"
+        ]
+      }
+    },
+    "szl-holdings/szl-provctl-live": {
+      "repository_id": 1295941247,
+      "state": "ACTIVE",
+      "observed_candidate_sha": "98ba2d50833d0d8215c54d4b415e6c0578315219",
+      "pending_reason": null,
+      "workflow_files": {
+        ".github/workflows/hf-static-space.yml": "cbb90b7cf33d83b02ef7837c583852f01b1af1d9c165a54dbcbbaeb2349ec95e"
+      },
+      "secret_execution_files": {
+        ".hf-space.json": "24f23b8e01c6d53f82b387de9041d735007a78f175cf523dcefbca198ba193a4",
+        "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
+        "requirements/hf-validator.lock": "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
+        "scripts/hf_static_space.py": "6936002f5d700aab8b6be7a3ca8763c47f0314fefca308daef86f347a7d2c0ed",
+        "tests/test_hf_static_space.py": "c4e87d02c8b550ec54ae7a41849db74e987f9aefbde1a4625f0854a4acc76f26"
+      },
+      "mutable_public_assets": [
+        "LICENSE",
+        "README.md",
+        "index.html"
+      ],
+      "publisher_contract": {
+        "publisher_workflow": ".github/workflows/hf-static-space.yml",
+        "publisher_script": "scripts/hf_static_space.py",
+        "dependency_lock": "requirements/hf-publisher.lock",
+        "protected_execution_roots": [
+          "scripts",
+          "tests"
+        ],
+        "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
+        "identities": [
+          {
+            "kind": "json",
+            "path": ".hf-space.json",
+            "source_repository": "szl-holdings/szl-provctl-live",
+            "target": "SZLHOLDINGS/szl-provctl-live"
+          }
+        ],
+        "required_workflow_markers": [
+          "on:",
+          "push:",
+          "branches: [main]",
+          "permissions: {}",
+          "contents: read",
+          "id-token: write",
+          "attestations: write",
+          "concurrency:",
+          "cancel-in-progress: false",
+          "authorize-exact-governed-merge",
+          "publish-exact-protected-main",
+          "measure-exact-publication",
+          "attest-exact-publication",
+          "needs.authorize.result == 'success'",
+          "needs.deploy.outputs.publisher-freshness-outcome == 'success'",
+          "include-hidden-files: true",
+          "Rebind five publisher inputs before interpretation or credentials",
+          "GITHUB_TOKEN: ${{ github.token }}",
+          "HF_TOKEN: ${{ secrets.HF_TOKEN }}",
+          "Rebind five measurement inputs before interpretation or credentials",
+          "measurement-hardening-outcome",
+          "measurement-input-outcome",
+          "measurement-rebind-outcome",
+          "measurement-publisher-evidence-outcome",
+          "measurement-environment-outcome",
+          "publisher-freshness-outcome",
+          "artifact-run-attempt: ${{ github.run_attempt }}",
+          "needs.measure.outputs.measurement-hardening-outcome == 'success'",
+          "needs.measure.outputs.measurement-input-outcome == 'success'",
+          "needs.measure.outputs.measurement-rebind-outcome == 'success'",
+          "needs.measure.outputs.measurement-publisher-evidence-outcome == 'success'",
+          "needs.measure.outputs.measurement-environment-outcome == 'success'",
+          "measurement-hardening",
+          "measurement-input",
+          "measurement-rebind",
+          "measurement-publisher-evidence",
+          "measurement-environment"
+        ],
+        "required_publisher_markers": [
+          "parent_commit=before_sha",
+          "delete_patterns=\"*\"",
+          "szl.github-governed-merge/v3",
+          "szl.pr-head/v1",
+          "load_governed_merge",
+          "required_workflow",
+          "final_authorization = require_governed_main",
+          "verify_live_tree",
+          "_fetch_public_index",
+          "failure_output_path",
+          "run_attempt",
+          "check_suite_id",
+          "publisher_executable_rebind",
+          "governance_authorization",
+          "publisher_environment",
+          "measurement_evidence_upload",
+          "OIDC_ATTESTED_DEPLOYMENT",
+          "WORKFLOW_STAGE_FAILURE",
+          "receipt_minted"
+        ]
+      }
+    }
+  }
 }
