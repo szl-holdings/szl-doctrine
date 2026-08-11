@@ -328,8 +328,8 @@
                                                           "observed_candidate_sha":  "d3578eeff9d0b93ded6de5d3a8034b786e5a3ab4",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                                                  ".github/workflows/hf-space-deploy.yml":  "a007adfe9cc417b11c896b64efd34b083657ad3d",
-                                                                                  ".github/workflows/kernel-contracts.yml":  "3d519209ada0d9b97e9b77e2e850a264b6d22d18"
+                                                            ".github/workflows/hf-space-deploy.yml":  "4da818a712a045e33ec3327b5768030dd49a4c80",
+                                                            ".github/workflows/kernel-contracts.yml":  "7fa9547e520fab33fd1fbf32d9cc4fc7a703a44b"
                                                                              },
                                                            "secret_execution_files":  {
                                                                                           "requirements/hf-publisher.lock":  "89923e2e202cfc99961e39d5b00b8ea7196d2c58",
