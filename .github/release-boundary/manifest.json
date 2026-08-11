@@ -88,7 +88,7 @@
                                                             "observed_candidate_sha":  "2aff8ff63f0bd8c449a8bf0dcfabd146e912c9c1",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                           ".github/workflows/hf-static-space.yml":  "aa5925895b6f63a03a637662206027ae2c110543"
+                                                           ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
                                                                                },
                                                             "secret_execution_files":  {
                                                                                            ".hf-space.json":  "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
@@ -168,7 +168,7 @@
                                                           "observed_candidate_sha":  "6bde251c3f37b003cb0754b69b4c63e04c634971",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                           ".github/workflows/hf-static-space.yml":  "aa5925895b6f63a03a637662206027ae2c110543"
+                                                           ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
                                                                              },
                                                           "secret_execution_files":  {
                                                                                          ".hf-space.json":  "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
@@ -248,7 +248,7 @@
                                                             "observed_candidate_sha":  "d8b2192d378aec9761034dd471045a0e1d36d92e",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                           ".github/workflows/hf-static-space.yml":  "aa5925895b6f63a03a637662206027ae2c110543"
+                                                           ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
                                                                                },
                                                             "secret_execution_files":  {
                                                                                            ".hf-space.json":  "4fc85a455d2ea0bb7222c166df55e663eb20cceb9caedf245373402dcd5f024e",
@@ -457,7 +457,7 @@
                                                           "observed_candidate_sha":  "98ba2d50833d0d8215c54d4b415e6c0578315219",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                                                  ".github/workflows/hf-static-space.yml":  "aa5925895b6f63a03a637662206027ae2c110543"
+                                                           ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
                                                                              },
                                                           "secret_execution_files":  {
                                                                                          ".hf-space.json":  "24f23b8e01c6d53f82b387de9041d735007a78f175cf523dcefbca198ba193a4",
