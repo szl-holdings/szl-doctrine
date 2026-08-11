@@ -736,6 +736,23 @@ class BoundaryTests(unittest.TestCase):
             ),
             "authorization command is not exact and mandatory",
         )
+        omitted_terminal_gate = re.sub(
+            r"(?ms)^      - name: Require exact governed authorization\n.*?"
+            r"(?=^      - name:|^  [a-z][a-z0-9_-]*:|\Z)",
+            "",
+            WORKFLOW,
+            count=1,
+        )
+        self.assertNotEqual(omitted_terminal_gate, WORKFLOW)
+        rejected(omitted_terminal_gate, "step sequence")
+        rejected(
+            WORKFLOW.replace(
+                "          set -euo pipefail\n",
+                "          set -euo pipefail\n          printf 'unbound shell body'\n",
+                1,
+            ),
+            "shell step bodies and environments",
+        )
         rejected(
             WORKFLOW.replace(
                 "permissions:\n  contents: read\n",

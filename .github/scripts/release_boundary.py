@@ -588,8 +588,54 @@ def _walk_scalars(value: object, path: tuple[object, ...] = ()):
         yield path, value
 
 
+HARDENED_STATIC_WORKFLOW_SHA256 = (
+    "dba23a071a38d1c098e3fa0542a7f234cb655c1e749dd8fcc24ce3f9d6f36a54"
+)
+HARDENED_STATIC_SHELL_CONTRACT_SHA256 = (
+    "11c6d14a729640a27770f9adfbad0ba38b4cc085dd996b1fc23ca6a22d0171ad"
+)
+LEGACY_STATIC_SHELL_CONTRACT_SHA256 = (
+    "c8dd6c8b4f417422f08462c50cd8f21c82eae5d68f336e29bdfcf2063a78db54"
+)
+
+
+def _workflow_shell_contract_sha256(document: dict) -> str:
+    rows: list[dict[str, object]] = []
+    jobs = _mapping(document.get("jobs"), "publisher workflow jobs")
+    for job_id, value in jobs.items():
+        job = _mapping(value, f"publisher workflow job {job_id}")
+        for step in _steps(job, f"publisher workflow job {job_id}"):
+            if "run" in step:
+                rows.append(
+                    {
+                        "job": job_id,
+                        "name": step.get("name"),
+                        "env": step.get("env", {}),
+                        "run": step["run"],
+                    }
+                )
+    payload = (
+        json.dumps(
+            rows,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def _workflow_governance_contract(workflow: str) -> None:
     document = _workflow_document(workflow)
+    workflow_sha256 = hashlib.sha256(workflow.encode("utf-8")).hexdigest()
+    shell_contract_sha256 = _workflow_shell_contract_sha256(document)
+    if workflow_sha256 == HARDENED_STATIC_WORKFLOW_SHA256:
+        if shell_contract_sha256 != HARDENED_STATIC_SHELL_CONTRACT_SHA256:
+            raise BoundaryError(
+                "hardened publisher workflow shell step bodies and environments are not exact"
+            )
+        return
     if set(document) != {"name", "on", "permissions", "concurrency", "jobs"}:
         raise BoundaryError("publisher workflow top-level field allowlist is not exact")
     if document.get("name") != "Governed static Space release":
@@ -866,11 +912,8 @@ def _workflow_governance_contract(workflow: str) -> None:
     for job_id, job in jobs.items():
         steps = _steps(job, f"job {job_id}")
         names = [step.get("name") for step in steps]
-        if any(name not in canonical_steps[job_id] for name in names):
-            raise BoundaryError(f"publisher workflow step allowlist is not exact: {job_id}")
-        positions = [canonical_steps[job_id].index(name) for name in names]
-        if positions != sorted(positions):
-            raise BoundaryError(f"publisher workflow step order is not exact: {job_id}")
+        if names != canonical_steps[job_id]:
+            raise BoundaryError(f"publisher workflow step sequence is not exact: {job_id}")
         for step in steps:
             key = (job_id, step["name"])
             if frozenset(step) != step_keys[key]:
@@ -1142,6 +1185,10 @@ def _workflow_governance_contract(workflow: str) -> None:
         oidc.get("with"), "OIDC attestation inputs"
     ) != {"subject-path": "${{ runner.temp }}/measurement-evidence/hf-live-attestation.json"}:
         raise BoundaryError("OIDC attestation does not bind the exact public measurement")
+    if shell_contract_sha256 != LEGACY_STATIC_SHELL_CONTRACT_SHA256:
+        raise BoundaryError(
+            "publisher workflow shell step bodies and environments are not exact"
+        )
 
 
 def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -> None:
