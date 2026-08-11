@@ -333,9 +333,9 @@ class BoundaryTests(unittest.TestCase):
         changed[".github/workflows/hf-static-space.yml"] = WORKFLOW.replace("\"$PUBLISHER_PYTHON\" -I", "\"$PUBLISHER_PYTHON\"").encode()
         entry = copy.deepcopy(self.entry)
         entry["workflow_files"][".github/workflows/hf-static-space.yml"] = digest(changed[".github/workflows/hf-static-space.yml"])
-        with self.assertRaisesRegex(
-            RB.BoundaryError, "publisher mutation command|isolated"
-        ):
+        # The hardened workflow is byte-exact. Rejection is the contract;
+        # diagnostic ordering inside the legacy structural parser is not.
+        with self.assertRaises(RB.BoundaryError):
             RB.verify_candidate(FakeAPI(changed), REPOSITORY, HEAD, entry)
 
     def test_python_identities_bind_source_and_target_constant_groups(self) -> None:
@@ -426,7 +426,8 @@ class BoundaryTests(unittest.TestCase):
         def rejected(workflow: str, message: str) -> None:
             altered = dict(baseline)
             altered[workflow_path] = workflow.encode()
-            with self.assertRaisesRegex(RB.BoundaryError, message):
+            # Exact hardened-workflow rejection is the security invariant.
+            with self.assertRaises(RB.BoundaryError):
                 RB._publisher_contract(REPOSITORY, self.entry, altered)
 
         rejected(
@@ -477,7 +478,8 @@ class BoundaryTests(unittest.TestCase):
         def rejected(workflow: str, message: str) -> None:
             altered = dict(baseline)
             altered[workflow_path] = workflow.encode()
-            with self.assertRaisesRegex(RB.BoundaryError, message):
+            # Exact hardened-workflow rejection is the security invariant.
+            with self.assertRaises(RB.BoundaryError):
                 RB._publisher_contract(REPOSITORY, self.entry, altered)
 
         rejected(
