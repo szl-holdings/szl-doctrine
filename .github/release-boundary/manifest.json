@@ -8,14 +8,14 @@
                                                             "observed_candidate_sha":  "2bd75342f2bbc39be0e4dd93356b42c10574e489",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                           ".github/workflows/hf-static-space.yml":  "93fcba8e1738fd16237d5f3437f82d3ec424b761"
+                                                                                   ".github/workflows/hf-static-space.yml":  "93fcba8e1738fd16237d5f3437f82d3ec424b761"
                                                                                },
                                                             "secret_execution_files":  {
-                                                                                           ".hf-space.json":  "1819b0cd12e8defb8c81bcb267461ce5b5e35ab980b6c80c3d22a3e55785714b",
-                                                                                           "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                                                                                           "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                           "scripts/hf_static_space.py":  "d05dc7a20ce86705393be61a15adf105418c0613a72b468c405ed887c93208db",
-                                                                                           "tests/test_hf_static_space.py":  "250c6136f6d8224015f40c72a20fbf829ea0794c578e5262038b94a1e3d85741"
+                                                                                           ".hf-space.json":  "b52e939dec09eaf28786f92094b2dcc48c4991a5",
+                                                                                           "requirements/hf-publisher.lock":  "89923e2e202cfc99961e39d5b00b8ea7196d2c58",
+                                                                                           "requirements/hf-validator.lock":  "ffa192b083d49aa273afe77085b28c54f2f043dc",
+                                                                                           "scripts/hf_static_space.py":  "e849b28491c8c52a10c293caf487d14a74dcfadd",
+                                                                                           "tests/test_hf_static_space.py":  "6eb57c7959bc99861fd50be8844edeceb2acae39"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
@@ -88,14 +88,14 @@
                                                             "observed_candidate_sha":  "2aff8ff63f0bd8c449a8bf0dcfabd146e912c9c1",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                           ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
+                                                                                   ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
                                                                                },
                                                             "secret_execution_files":  {
-                                                                                           ".hf-space.json":  "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
-                                                                                           "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                                                                                           "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                           "scripts/hf_static_space.py":  "d05dc7a20ce86705393be61a15adf105418c0613a72b468c405ed887c93208db",
-                                                                                           "tests/test_hf_static_space.py":  "250c6136f6d8224015f40c72a20fbf829ea0794c578e5262038b94a1e3d85741"
+                                                                                           ".hf-space.json":  "d20cb8e9d9f95318b8cb4053c7d2d0a536291447",
+                                                                                           "requirements/hf-publisher.lock":  "89923e2e202cfc99961e39d5b00b8ea7196d2c58",
+                                                                                           "requirements/hf-validator.lock":  "ffa192b083d49aa273afe77085b28c54f2f043dc",
+                                                                                           "scripts/hf_static_space.py":  "567d8193e8c356842a52abcc891dafd5aae9fb9b",
+                                                                                           "tests/test_hf_static_space.py":  "c4bf5ec0f37daf4bf94836663c4124e87a70d40c"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
@@ -168,14 +168,14 @@
                                                           "observed_candidate_sha":  "6bde251c3f37b003cb0754b69b4c63e04c634971",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                           ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
+                                                                                 ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
                                                                              },
                                                           "secret_execution_files":  {
-                                                                                         ".hf-space.json":  "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
-                                                                                         "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                                                                                         "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                         "scripts/hf_static_space.py":  "d05dc7a20ce86705393be61a15adf105418c0613a72b468c405ed887c93208db",
-                                                                                         "tests/test_hf_static_space.py":  "250c6136f6d8224015f40c72a20fbf829ea0794c578e5262038b94a1e3d85741"
+                                                                                         ".hf-space.json":  "7d0129beb2f8565308c4b8afc76b1592ca1ae587",
+                                                                                         "requirements/hf-publisher.lock":  "89923e2e202cfc99961e39d5b00b8ea7196d2c58",
+                                                                                         "requirements/hf-validator.lock":  "ffa192b083d49aa273afe77085b28c54f2f043dc",
+                                                                                         "scripts/hf_static_space.py":  "567d8193e8c356842a52abcc891dafd5aae9fb9b",
+                                                                                         "tests/test_hf_static_space.py":  "c4bf5ec0f37daf4bf94836663c4124e87a70d40c"
                                                                                      },
                                                           "mutable_public_assets":  [
                                                                                         "LICENSE",
@@ -248,14 +248,14 @@
                                                             "observed_candidate_sha":  "d8b2192d378aec9761034dd471045a0e1d36d92e",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                           ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
+                                                                                   ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
                                                                                },
                                                             "secret_execution_files":  {
-                                                                                           ".hf-space.json":  "4fc85a455d2ea0bb7222c166df55e663eb20cceb9caedf245373402dcd5f024e",
-                                                                                           "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                                                                                           "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                           "scripts/hf_static_space.py":  "d05dc7a20ce86705393be61a15adf105418c0613a72b468c405ed887c93208db",
-                                                                                           "tests/test_hf_static_space.py":  "250c6136f6d8224015f40c72a20fbf829ea0794c578e5262038b94a1e3d85741"
+                                                                                           ".hf-space.json":  "0ebe9ad59cd5acdaca1f46fc22f94213e773a693",
+                                                                                           "requirements/hf-publisher.lock":  "89923e2e202cfc99961e39d5b00b8ea7196d2c58",
+                                                                                           "requirements/hf-validator.lock":  "ffa192b083d49aa273afe77085b28c54f2f043dc",
+                                                                                           "scripts/hf_static_space.py":  "567d8193e8c356842a52abcc891dafd5aae9fb9b",
+                                                                                           "tests/test_hf_static_space.py":  "c4bf5ec0f37daf4bf94836663c4124e87a70d40c"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
@@ -324,25 +324,25 @@
                                                         },
                     "szl-holdings/szl-kernels-live":  {
                                                           "repository_id":  1295941334,
-                                                           "state":  "ACTIVE",
+                                                          "state":  "ACTIVE",
                                                           "observed_candidate_sha":  "d3578eeff9d0b93ded6de5d3a8034b786e5a3ab4",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                            ".github/workflows/hf-space-deploy.yml":  "4da818a712a045e33ec3327b5768030dd49a4c80",
-                                                            ".github/workflows/kernel-contracts.yml":  "7fa9547e520fab33fd1fbf32d9cc4fc7a703a44b"
+                                                                                 ".github/workflows/hf-space-deploy.yml":  "4da818a712a045e33ec3327b5768030dd49a4c80",
+                                                                                 ".github/workflows/kernel-contracts.yml":  "7fa9547e520fab33fd1fbf32d9cc4fc7a703a44b"
                                                                              },
-                                                           "secret_execution_files":  {
-                                                                                          "requirements/hf-publisher.lock":  "89923e2e202cfc99961e39d5b00b8ea7196d2c58",
-                                                                                          "scripts/build_hf_space_bundle.py":  "78c1ba8ce9137c83289086f4399b3a799349baba",
-                                                                                          "scripts/deploy_hf_space.py":  "cce02f036e49c1411286e43cf3fd74d1f02b86a7",
-                                                                                          "scripts/kernel_portfolio_truth.mjs":  "c466d06c14eb7556d1312d245ef4ef10a9318311",
-                                                                                          "scripts/snapshot_kernel_contracts.py":  "aeefa5cedfceb7bd58d9a0826ebb979d2206236b",
-                                                                                          "scripts/verify_kernel_registry.py":  "f4d5f2c38a4b81ce2c4f4a3133394d878ddbc915",
-                                                                                          "tests/fixtures/hf-static-window-huggingface-injection.html":  "9af74f6fb275856e11a79df0b318d0b41a0f7cee",
-                                                                                          "tests/test_hf_space_bundle.py":  "12ced6d1299d215e77de1b9b09c028aac34c1e38",
-                                                                                          "tests/test_kernel_portfolio_truth.mjs":  "3413bf3c3a4dcc681960f7921ef7e1a6549e9daa",
-                                                                                          "tests/test_kernel_registry.py":  "77adad7a08dff160f24f396e32b6ef3e92595a93"
-                                                                                      },
+                                                          "secret_execution_files":  {
+                                                                                         "requirements/hf-publisher.lock":  "89923e2e202cfc99961e39d5b00b8ea7196d2c58",
+                                                                                         "scripts/build_hf_space_bundle.py":  "78c1ba8ce9137c83289086f4399b3a799349baba",
+                                                                                         "scripts/deploy_hf_space.py":  "cce02f036e49c1411286e43cf3fd74d1f02b86a7",
+                                                                                         "scripts/kernel_portfolio_truth.mjs":  "c466d06c14eb7556d1312d245ef4ef10a9318311",
+                                                                                         "scripts/snapshot_kernel_contracts.py":  "aeefa5cedfceb7bd58d9a0826ebb979d2206236b",
+                                                                                         "scripts/verify_kernel_registry.py":  "f4d5f2c38a4b81ce2c4f4a3133394d878ddbc915",
+                                                                                         "tests/fixtures/hf-static-window-huggingface-injection.html":  "9af74f6fb275856e11a79df0b318d0b41a0f7cee",
+                                                                                         "tests/test_hf_space_bundle.py":  "12ced6d1299d215e77de1b9b09c028aac34c1e38",
+                                                                                         "tests/test_kernel_portfolio_truth.mjs":  "3413bf3c3a4dcc681960f7921ef7e1a6549e9daa",
+                                                                                         "tests/test_kernel_registry.py":  "77adad7a08dff160f24f396e32b6ef3e92595a93"
+                                                                                     },
                                                           "mutable_public_assets":  [
                                                                                         "LICENSE",
                                                                                         "README.md",
@@ -457,14 +457,14 @@
                                                           "observed_candidate_sha":  "98ba2d50833d0d8215c54d4b415e6c0578315219",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                           ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
+                                                                                 ".github/workflows/hf-static-space.yml":  "61938a6b6a821ea9df443f1ae0e5fce2feb21a59"
                                                                              },
                                                           "secret_execution_files":  {
-                                                                                         ".hf-space.json":  "24f23b8e01c6d53f82b387de9041d735007a78f175cf523dcefbca198ba193a4",
-                                                                                         "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                                                                                         "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                         "scripts/hf_static_space.py":  "d05dc7a20ce86705393be61a15adf105418c0613a72b468c405ed887c93208db",
-                                                                                         "tests/test_hf_static_space.py":  "250c6136f6d8224015f40c72a20fbf829ea0794c578e5262038b94a1e3d85741"
+                                                                                         ".hf-space.json":  "99cd501a378fe9fcc5ed56403f572b17f0506a7d",
+                                                                                         "requirements/hf-publisher.lock":  "89923e2e202cfc99961e39d5b00b8ea7196d2c58",
+                                                                                         "requirements/hf-validator.lock":  "ffa192b083d49aa273afe77085b28c54f2f043dc",
+                                                                                         "scripts/hf_static_space.py":  "567d8193e8c356842a52abcc891dafd5aae9fb9b",
+                                                                                         "tests/test_hf_static_space.py":  "c4bf5ec0f37daf4bf94836663c4124e87a70d40c"
                                                                                      },
                                                           "mutable_public_assets":  [
                                                                                         "LICENSE",
