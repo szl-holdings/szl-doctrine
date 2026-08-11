@@ -27,46 +27,29 @@ REPOSITORY_ID = 1295931629
 HEAD, BASE, TREE = "1" * 40, "2" * 40, "3" * 40
 
 
-WORKFLOW = """name: Governed static Space release
-on:
-  pull_request:
-  push:
-    branches: [main]
-permissions:
-  contents: read
-concurrency:
-  cancel-in-progress: false
-jobs:
-  deploy:
-    name: publish-exact-protected-main
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
-        with:
-          private-key: ${{ secrets.QILLQAQ_PRIVATE_KEY }}
-          repositories: ${{ github.event.repository.name }}
-          permission-administration: read
-          permission-contents: read
-      - run: python -I -m venv "$RUNNER_TEMP/venv"
-      - run: pip install --require-hashes --only-binary=:all: -r requirements/hf-publisher.lock
-      - env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: "$PUBLISHER_PYTHON" -I scripts/hf_static_space.py
-"""
+WORKFLOW_FIXTURE_PATH = HERE / "fixtures" / "hf-static-space.yml"
+WORKFLOW = WORKFLOW_FIXTURE_PATH.read_text(encoding="utf-8")
 PUBLISHER = b"""import json
-authorization = require_governed_main(source_sha, config_path)
+governed_schema = "szl.github-governed-merge/v3"
+pr_body_schema = "szl.pr-head/v1"
+authorization = load_governed_merge(source_sha, config_path)
+required_workflow = authorization
 parent_commit=before_sha
 delete_patterns="*"
 verify_live_tree(bundle, tree, allowed)
 _fetch_public_index(origin, source_sha)
 failure_output_path = output
 final_authorization = require_governed_main(source_sha, config_path)
+governance_authorization = publisher_environment = measurement_evidence_upload = True
+run_attempt = check_suite_id = 1
+publisher_executable_rebind = True
+OIDC_ATTESTED_DEPLOYMENT = WORKFLOW_STAGE_FAILURE = receipt_minted = False
 """
 LOCK = b"huggingface_hub==1.2.3 --hash=sha256:" + b"a" * 64 + b"\n"
 for index in range(22):
     LOCK += f"package-{index}==1.0 --hash=sha256:{index:064x}\n".encode()
+VALIDATOR_LOCK = b"PyYAML==6.0.3 --hash=sha256:" + b"b" * 64 + b"\n"
+TEST_RUNTIME = b"from unittest import TestCase\n"
 CONFIG = json.dumps({"source_repository": REPOSITORY, "target": "SZLHOLDINGS/lambda-gate-holo"}).encode()
 
 
@@ -81,17 +64,17 @@ def manifest_fixture() -> dict:
         "observed_candidate_sha": HEAD,
         "pending_reason": None,
         "workflow_files": {".github/workflows/hf-static-space.yml": digest(WORKFLOW.encode())},
-        "secret_execution_files": {".hf-space.json": digest(CONFIG), "requirements/hf-publisher.lock": digest(LOCK), "scripts/hf_static_space.py": digest(PUBLISHER)},
+        "secret_execution_files": {".hf-space.json": digest(CONFIG), "requirements/hf-publisher.lock": digest(LOCK), "requirements/hf-validator.lock": digest(VALIDATOR_LOCK), "scripts/hf_static_space.py": digest(PUBLISHER), "tests/test_hf_static_space.py": digest(TEST_RUNTIME)},
         "mutable_public_assets": ["LICENSE", "README.md", "index.html"],
         "publisher_contract": {
             "publisher_workflow": ".github/workflows/hf-static-space.yml",
             "publisher_script": "scripts/hf_static_space.py",
             "dependency_lock": "requirements/hf-publisher.lock",
-            "protected_execution_roots": ["scripts"],
-            "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I scripts/hf_static_space.py",
+            "protected_execution_roots": ["scripts", "tests"],
+            "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
             "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": REPOSITORY, "target": "SZLHOLDINGS/lambda-gate-holo"}],
-            "required_workflow_markers": ["on:", "push:", "branches: [main]", "concurrency:", "cancel-in-progress: false", "QILLQAQ_PRIVATE_KEY", "HF_TOKEN", "permission-administration: read", "permission-contents: read", "repositories: ${{ github.event.repository.name }}", "python -I -m venv", "--require-hashes", "--only-binary=:all:", "publish-exact-protected-main"],
-            "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "authorization = require_governed_main", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path"],
+            "required_workflow_markers": ["on:", "push:", "branches: [main]", "permissions: {}", "contents: read", "id-token: write", "attestations: write", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "needs.authorize.result == 'success'", "include-hidden-files: true", "Rebind five publisher inputs before interpretation or credentials", "GITHUB_TOKEN: ${{ github.token }}", "HF_TOKEN: ${{ secrets.HF_TOKEN }}"],
+            "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "szl.github-governed-merge/v3", "szl.pr-head/v1", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "run_attempt", "check_suite_id", "publisher_executable_rebind", "governance_authorization", "publisher_environment", "measurement_evidence_upload", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "receipt_minted"],
         },
     }
     targets = {}
@@ -109,7 +92,7 @@ def manifest_fixture() -> dict:
 
 
 def blob_values() -> dict[str, bytes]:
-    return {".github/workflows/hf-static-space.yml": WORKFLOW.encode(), ".hf-space.json": CONFIG, "requirements/hf-publisher.lock": LOCK, "scripts/hf_static_space.py": PUBLISHER, "LICENSE": b"license", "README.md": b"readme", "index.html": b"<p>public</p>"}
+    return {".github/workflows/hf-static-space.yml": WORKFLOW.encode(), ".hf-space.json": CONFIG, "requirements/hf-publisher.lock": LOCK, "requirements/hf-validator.lock": VALIDATOR_LOCK, "scripts/hf_static_space.py": PUBLISHER, "tests/test_hf_static_space.py": TEST_RUNTIME, "LICENSE": b"license", "README.md": b"readme", "index.html": b"<p>public</p>"}
 
 
 class FakeAPI:
@@ -171,16 +154,40 @@ class BoundaryTests(unittest.TestCase):
         self.entry = self.manifest["targets"][REPOSITORY]
         self.env = {"EVENT_REPOSITORY": REPOSITORY, "EVENT_REPOSITORY_ID": str(REPOSITORY_ID), "EVENT_HEAD_SHA": HEAD, "GITHUB_SHA": HEAD}
 
-    def test_repository_manifest_has_six_active_heads(self) -> None:
+    def test_repository_manifest_has_five_active_heads_and_frozen_kernel(self) -> None:
         manifest = RB.load_manifest(MANIFEST_PATH)
         self.assertEqual(
             {name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
-            set(RB.TARGET_IDS),
+            set(RB.TARGET_IDS) - {"szl-holdings/szl-kernels-live"},
         )
         kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
-        self.assertEqual(kernel["state"], "ACTIVE")
-        self.assertEqual(kernel["observed_candidate_sha"], "243247bcae0a7933947fb7059031d00983b1e1e8")
-        self.assertIsNone(kernel["pending_reason"])
+        self.assertEqual(kernel["state"], "PENDING")
+        self.assertEqual(
+            {
+                name: item["observed_candidate_sha"]
+                for name, item in manifest["targets"].items()
+            },
+            {
+                "szl-holdings/energy-attest-holo": "691c898cd6267fa2c5180ef2cbdf25a477c26149",
+                "szl-holdings/governed-norm-holo": "b720e8a3fe413e7dd6cf5c5fdd3691c5523c3e26",
+                "szl-holdings/lambda-gate-holo": "b8a2dce95f6212484c8e448b4f2a778e57082177",
+                "szl-holdings/receipt-chain-live": "3a42763b8301aea481ce49296f1d98138e298a46",
+                "szl-holdings/szl-kernels-live": None,
+                "szl-holdings/szl-provctl-live": "c795792d5560a8384f892c808e5929c53defdcc3",
+            },
+        )
+        for name, item in manifest["targets"].items():
+            markers = set(item["publisher_contract"]["required_workflow_markers"])
+            if name != "szl-holdings/szl-kernels-live":
+                self.assertIn("permissions: {}", markers)
+                self.assertIn("authorize-exact-governed-merge", markers)
+                self.assertIn("measure-exact-publication", markers)
+                self.assertIn("attest-exact-publication", markers)
+                self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", markers)
+            self.assertNotIn("QILLQAQ_PRIVATE_KEY", markers)
+            self.assertNotIn("permission-administration: read", markers)
+            self.assertNotIn("actions/create-github-app-token@", "\n".join(markers))
+        self.assertIn("separately supplied and reviewed v3 kernel publisher receipt", kernel["pending_reason"])
         self.assertEqual(
             set(kernel["workflow_files"]),
             {".github/workflows/hf-space-deploy.yml", ".github/workflows/kernel-contracts.yml"},
@@ -200,8 +207,8 @@ class BoundaryTests(unittest.TestCase):
                 "tests/test_kernel_registry.py",
             },
         )
-        self.assertTrue(all(RB.HEX64.fullmatch(value) for value in kernel["workflow_files"].values()))
-        self.assertTrue(all(RB.HEX64.fullmatch(value) for value in kernel["secret_execution_files"].values()))
+        self.assertEqual(set(kernel["workflow_files"].values()), {"PENDING"})
+        self.assertEqual(set(kernel["secret_execution_files"].values()), {"PENDING"})
         all_pending = copy.deepcopy(self.manifest)
         active = all_pending["targets"][REPOSITORY]
         active["state"] = "PENDING"
@@ -212,31 +219,13 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(RB.BoundaryError, "no ACTIVE"):
             RB.verify_all_active(all_pending, FakeAPI())
 
-    def test_kernel_manifest_binds_exact_candidate_git_blob_digests(self) -> None:
-        """Pin Git object bytes, not platform-normalized checkout bytes."""
+    def test_kernel_manifest_is_explicitly_fail_closed(self) -> None:
         kernel = RB.load_manifest(MANIFEST_PATH)["targets"]["szl-holdings/szl-kernels-live"]
-        self.assertEqual(
-            kernel["workflow_files"],
-            {
-                ".github/workflows/hf-space-deploy.yml": "f12d9af3f20fc64c600570513ced56b1cc3850128de183b0b06591247467c519",
-                ".github/workflows/kernel-contracts.yml": "89e8d517383afda0098bb64d6b065c16c56170bbd65430b6318af25a2b83dfbf",
-            },
-        )
-        self.assertEqual(
-            kernel["secret_execution_files"],
-            {
-                "requirements/hf-publisher.lock": "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
-                "scripts/build_hf_space_bundle.py": "90f2d41a356bf4150ce078a6629dc8110f2e8f0789191e1f8b95def4e3c498e7",
-                "scripts/deploy_hf_space.py": "7e6183127f8354d388f5c7bbf6b3f7771c7f021accbd7f370cbda11aa20c0409",
-                "scripts/kernel_portfolio_truth.mjs": "59ead9dcf02747fe4bab58fa3f78e9f7209dc767de4dedfdfaf3da02300655c3",
-                "scripts/snapshot_kernel_contracts.py": "15e5c54b1a17aa3bee2f1d63d0494f5dbc11f73c7100e75415b3c5f798e7edd7",
-                "scripts/verify_kernel_registry.py": "651d3da3a64f9180a7d47ebb577e870c6d585c171bfc945f4bdfeb17980a259c",
-                "tests/fixtures/hf-static-window-huggingface-injection.html": "50e110935e42b44c4ea82b3544e2089de00a4082635d73931d14af5ab3d9b9de",
-                "tests/test_hf_space_bundle.py": "fc9706fcd3ba3f1a3ab03155f5bd4fc204376ce1040559ba558619c68127f9da",
-                "tests/test_kernel_portfolio_truth.mjs": "7751d55081a2946f56bfec888948c4bf5d5880b96092d53458a92b4f2c55478d",
-                "tests/test_kernel_registry.py": "6c8d2827f5f1c37ec353655c46f45100f046cb767da39ab45f9cd3b98bc5957b",
-            },
-        )
+        self.assertEqual(kernel["state"], "PENDING")
+        self.assertIsNone(kernel["observed_candidate_sha"])
+        self.assertTrue(kernel["pending_reason"])
+        self.assertEqual(set(kernel["workflow_files"].values()), {"PENDING"})
+        self.assertEqual(set(kernel["secret_execution_files"].values()), {"PENDING"})
 
     def test_all_active_verification_reports_verified_static_before_pending(self) -> None:
         result = RB.verify_all_active(self.manifest, FakeAPI())
@@ -344,7 +333,9 @@ class BoundaryTests(unittest.TestCase):
         changed[".github/workflows/hf-static-space.yml"] = WORKFLOW.replace("\"$PUBLISHER_PYTHON\" -I", "\"$PUBLISHER_PYTHON\"").encode()
         entry = copy.deepcopy(self.entry)
         entry["workflow_files"][".github/workflows/hf-static-space.yml"] = digest(changed[".github/workflows/hf-static-space.yml"])
-        with self.assertRaisesRegex(RB.BoundaryError, "isolated"):
+        with self.assertRaisesRegex(
+            RB.BoundaryError, "publisher mutation command|isolated"
+        ):
             RB.verify_candidate(FakeAPI(changed), REPOSITORY, HEAD, entry)
 
     def test_python_identities_bind_source_and_target_constant_groups(self) -> None:
@@ -405,6 +396,180 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(RB.BoundaryError, "identity constants"):
             RB._identities(REPOSITORY, contract, {"publisher.py": missing_target})
 
+    def test_legacy_governance_credentials_fail_closed(self) -> None:
+        workflow_path = ".github/workflows/hf-static-space.yml"
+        baseline = blob_values()
+        RB._publisher_contract(REPOSITORY, self.entry, baseline)
+
+        for marker in RB.LEGACY_GOVERNANCE_CREDENTIAL_MARKERS:
+            altered = dict(baseline)
+            altered[workflow_path] = (WORKFLOW + f"\n# {marker}\n").encode()
+            with self.subTest(marker=marker), self.assertRaisesRegex(
+                RB.BoundaryError, "legacy privileged governance credential"
+            ):
+                RB._publisher_contract(REPOSITORY, self.entry, altered)
+
+        secret_alias = dict(baseline)
+        secret_alias[workflow_path] = WORKFLOW.replace(
+            "GITHUB_TOKEN: ${{ github.token }}",
+            "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+        ).encode()
+        with self.assertRaisesRegex(
+            RB.BoundaryError, "legacy privileged governance credential"
+        ):
+            RB._publisher_contract(REPOSITORY, self.entry, secret_alias)
+
+    def test_structural_privilege_domains_fail_closed(self) -> None:
+        workflow_path = ".github/workflows/hf-static-space.yml"
+        baseline = blob_values()
+
+        def rejected(workflow: str, message: str) -> None:
+            altered = dict(baseline)
+            altered[workflow_path] = workflow.encode()
+            with self.assertRaisesRegex(RB.BoundaryError, message):
+                RB._publisher_contract(REPOSITORY, self.entry, altered)
+
+        rejected(
+            WORKFLOW.replace(
+                "    permissions: {}\n",
+                "    permissions:\n      id-token: write\n",
+                1,
+            ),
+            "publisher job permissions",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "          GITHUB_TOKEN: \"\"\n          GH_TOKEN: \"\"",
+                "          GITHUB_TOKEN: ${{ github.token }}\n          GH_TOKEN: \"\"",
+                1,
+            ),
+            "publisher mutation credential boundary|publisher job contains a GitHub repository credential",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "          HF_TOKEN: \"\"\n          SOURCE_SHA:",
+                "          HF_TOKEN: ${{ secrets.HF_TOKEN }}\n          SOURCE_SHA:",
+                1,
+            ),
+            "measurement credential boundary|HF secret consumption",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'",
+                "    if: always()",
+                1,
+            ),
+            "attestation job is not protected-main-push only",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "hf-static-space-publication-${{ github.sha }}",
+                "hf-static-space-publication-stale",
+                1,
+            ),
+            "artifact input|action binding",
+        )
+
+    def test_yaml_and_expression_bypasses_fail_closed(self) -> None:
+        workflow_path = ".github/workflows/hf-static-space.yml"
+        baseline = blob_values()
+
+        def rejected(workflow: str, message: str) -> None:
+            altered = dict(baseline)
+            altered[workflow_path] = workflow.encode()
+            with self.assertRaisesRegex(RB.BoundaryError, message):
+                RB._publisher_contract(REPOSITORY, self.entry, altered)
+
+        rejected(
+            WORKFLOW.replace(
+                "    permissions: {}\n",
+                '    "permissio\\u006es":\n      contents: write\n',
+                1,
+            ),
+            "publisher job permissions",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "${{ secrets.HF_TOKEN }}",
+                "${{ secrets['HF_TOKEN'] }}",
+                1,
+            ),
+            "credential boundary|HF secret consumption",
+        )
+        rejected(
+            WORKFLOW.replace(
+                '            --failure-output "$RUNNER_TEMP/governed-merge-failure.json"',
+                '            --failure-output "$RUNNER_TEMP/governed-merge-failure.json" || true',
+                1,
+            ),
+            "authorization command is not exact and mandatory",
+        )
+        omitted_terminal_gate = re.sub(
+            r"(?ms)^      - name: Require exact governed authorization\n.*?"
+            r"(?=^      - name:|^  [a-z][a-z0-9_-]*:|\Z)",
+            "",
+            WORKFLOW,
+            count=1,
+        )
+        self.assertNotEqual(omitted_terminal_gate, WORKFLOW)
+        rejected(omitted_terminal_gate, "step sequence")
+        rejected(
+            WORKFLOW.replace(
+                "          set -euo pipefail\n",
+                "          set -euo pipefail\n          printf 'unbound shell body'\n",
+                1,
+            ),
+            "shell step bodies and environments",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "permissions:\n  contents: read\n",
+                "permissions:\n  contents: read\npermissions:\n  contents: write\n",
+                1,
+            ),
+            "duplicate YAML key",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "        uses: actions/upload-artifact@",
+                '        "us\\u0065s": actions/upload-artifact@',
+                1,
+            ),
+            "decoded action inventory",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "          path: ${{ runner.temp }}/publisher-input\n",
+                "          path: ${{ runner.temp }}/publisher-input\n          run-id: 1\n",
+                1,
+            ),
+            "action binding|artifact input map",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "  deploy:\n",
+                "  deploy:\n    container: ubuntu:latest\n",
+                1,
+            ),
+            "job fields",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "      authorization-outcome: ${{ steps.authorization.outcome }}",
+                "      authorization-outcome: ${{ steps.bundle.outcome }}",
+                1,
+            ),
+            "output map",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "      - name: Download exact publisher outcome\n        uses:",
+                "      - name: Download exact publisher outcome\n        if: always()\n        uses:",
+                1,
+            ),
+            "step fields",
+        )
+
     def test_boundary_never_executes_target_and_source_workflow_is_pinned(self) -> None:
         tree = ast.parse((HERE / "release_boundary.py").read_text(encoding="utf-8"))
         forbidden = {"subprocess", "importlib", "runpy"}
@@ -413,6 +578,12 @@ class BoundaryTests(unittest.TestCase):
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         self.assertEqual(workflow.count("repository: szl-holdings/szl-doctrine"), 2)
         self.assertNotIn("repository: ${{ github.repository }}", workflow)
+        self.assertEqual(
+            workflow.count(".github/requirements/release-boundary.lock"), 5
+        )
+        self.assertEqual(workflow.count("Install exact structural YAML parser"), 3)
+        self.assertEqual(workflow.count("--require-hashes --only-binary=:all:"), 3)
+        self.assertNotIn("python -I .github/scripts/release_boundary.py", workflow)
         uses = RB.ANY_USES.findall(workflow)
         self.assertTrue(uses)
         self.assertTrue(all(RB.PINNED_USES.fullmatch(value) for value in uses))

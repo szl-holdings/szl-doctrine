@@ -17,8 +17,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  enforce-pull-request:
-    if: github.event_name == 'pull_request'
+  enforce-policy:
+    # This legacy context remains required by the protected Doctrine ruleset.
+    # One job serves both events so GitHub never publishes a duplicate skipped
+    # check with the same context name.
     name: Required DCO enforcement
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -29,6 +31,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout exact protected policy source
+        if: github.event_name == 'pull_request'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: szl-holdings/szl-doctrine
@@ -43,33 +46,77 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Validate every target pull-request commit
+        if: github.event_name == 'pull_request'
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_REPOSITORY: ${{ github.event.repository.full_name }}
+          EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
+          EXPECTED_BASE_REF: ${{ github.event.pull_request.base.ref }}
           EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
           POLICY_SHA: ${{ github.workflow_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REPOSITORY_ID: ${{ github.repository_id }}
         shell: bash
         run: |
           set -euo pipefail
+          test "$EVENT_REPOSITORY" = "$WORKFLOW_REPOSITORY"
+          test "$EVENT_REPOSITORY_ID" = "$WORKFLOW_REPOSITORY_ID"
+          test "$EXPECTED_BASE_REF" = "main"
+          [[ "$EXPECTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
           test "$(git -C policy rev-parse HEAD)" = "$POLICY_SHA"
           python3 -m py_compile policy/.github/scripts/dco_required.py
           python3 policy/.github/scripts/test_dco_required.py
           python3 policy/.github/scripts/dco_required.py
 
-  preserve-merge-queue-gate:
-    if: github.event_name == 'merge_group'
-    # Publish the same required context name consumed by target-repository
-    # merge queues. The protected pull-request run remains the DCO evidence;
-    # this job only carries that already-required decision into admission.
-    name: DCO sign-off check
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Preserve the already-required pull-request decision
+      - name: Preserve the required pull-request decision for merge admission
+        if: github.event_name == 'merge_group'
+        env:
+          EVENT_BASE_REF: ${{ github.event.merge_group.base_ref }}
+          EVENT_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          EVENT_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          EVENT_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          EVENT_REPOSITORY: ${{ github.event.repository.full_name }}
+          EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REPOSITORY_ID: ${{ github.repository_id }}
+          WORKFLOW_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${{ github.event.merge_group.head_sha }}"
-          echo "This merge-group run is an admission continuation, not independent DCO evidence."
-          echo "Activate enforcement only after Evaluate mode has witnessed both pull-request and merge-group execution."
+          test "$EVENT_REPOSITORY" = "$WORKFLOW_REPOSITORY"
+          test "$EVENT_REPOSITORY_ID" = "$WORKFLOW_REPOSITORY_ID"
+          [[ "$EVENT_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EVENT_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EVENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$WORKFLOW_SHA" = "$EVENT_HEAD_SHA"
+          test "$EVENT_BASE_SHA" != "$EVENT_HEAD_SHA"
+          test "$EVENT_BASE_REF" = "refs/heads/main"
+          case "$EVENT_HEAD_REF" in
+            refs/heads/gh-readonly-queue/main/*) ;;
+            *) echo "Merge-group head ref is outside the default-branch queue." >&2; exit 1 ;;
+          esac
+          echo "This merge-group result is an admission continuation of the required pull-request DCO decision. It is not independent DCO evidence."
+
+  status-compatibility:
+    # Publish the newer compatibility context only after the legacy required
+    # context has succeeded. always() makes failures propagate as failures
+    # instead of silently turning this check into a skipped result.
+    name: DCO sign-off check
+    needs: [enforce-policy]
+    if: always()
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Propagate the required DCO enforcement result
+        env:
+          REQUIRED_DCO_RESULT: ${{ needs.enforce-policy.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$REQUIRED_DCO_RESULT" = "success"
+          echo "DCO sign-off check is compatible with the successful Required DCO enforcement result."
