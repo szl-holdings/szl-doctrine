@@ -425,6 +425,7 @@ class BoundaryTests(unittest.TestCase):
         baseline = blob_values()
 
         def rejected(workflow: str, message: str) -> None:
+            self.assertNotEqual(workflow, WORKFLOW)
             altered = dict(baseline)
             altered[workflow_path] = workflow.encode()
             # Exact hardened-workflow rejection is the security invariant.
@@ -477,6 +478,7 @@ class BoundaryTests(unittest.TestCase):
         baseline = blob_values()
 
         def rejected(workflow: str, message: str) -> None:
+            self.assertNotEqual(workflow, WORKFLOW)
             altered = dict(baseline)
             altered[workflow_path] = workflow.encode()
             # Exact hardened-workflow rejection is the security invariant.
@@ -566,8 +568,8 @@ class BoundaryTests(unittest.TestCase):
         )
         rejected(
             WORKFLOW.replace(
-                "      - name: Download exact publisher outcome\n        uses:",
-                "      - name: Download exact publisher outcome\n        if: always()\n        uses:",
+                "      - name: Harden runner\n        uses:",
+                "      - name: Harden runner\n        if: always()\n        uses:",
                 1,
             ),
             "step fields",
