@@ -63,6 +63,9 @@ jobs:
     timeout-minutes: 20
     outputs: {}
     steps:
+      - name: Isolated publisher mutation command
+        run: |
+          /usr/bin/env -i
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
   measure:
     name: measure-and-reauthorize-publication
