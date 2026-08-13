@@ -352,7 +352,7 @@
                                                                                          "scripts/build_hf_space_bundle.py":  "90f2d41a356bf4150ce078a6629dc8110f2e8f0789191e1f8b95def4e3c498e7",
                                                                                          "scripts/deploy_hf_space.py":  "b149c191cd1a03de469d902a6854f661d732d06a86bcba751a23fe782d5ebe04",
                                                                                          "scripts/kernel_portfolio_truth.mjs":  "59ead9dcf02747fe4bab58fa3f78e9f7209dc767de4dedfdfaf3da02300655c3",
-                                                                                         "scripts/snapshot_kernel_contracts.py":  "00cd866d372f34a730d58ff2e5fad1e2d614b0a754eb43176d1febc9b58f97af",
+                                                                                         "scripts/snapshot_kernel_contracts.py":  "15e5c54b1a17aa3bee2f1d63d0494f5dbc11f73c7100e75415b3c5f798e7edd7",
                                                                                          "scripts/verify_kernel_registry.py":  "19bc4c5a86cae3c80a10d996af20a11e290387626d8495334688ad9b21a8cd41",
                                                                                          "tests/fixtures/hf-static-window-huggingface-injection.html":  "440537c0c81d73ef45fc8815ab3a6d5a5cffa6dc7029a6e1f76e4811900981ce",
                                                                                          "tests/test_hf_space_bundle.py":  "19942dc2625ebeea8ba24022203d89aaeb9802048f576e56ee58f45f17bab00a",
@@ -556,6 +556,7 @@
                                                       }
                 }
 }
+
 
 
 
