@@ -55,6 +55,7 @@ for index in range(22):
 VALIDATOR_LOCK = b"PyYAML==6.0.3 --hash=sha256:" + b"b" * 64 + b"\n"
 TEST_RUNTIME = b"from unittest import TestCase\n"
 CONFIG = json.dumps({"source_repository": REPOSITORY, "target": "SZLHOLDINGS/lambda-gate-holo"}).encode()
+KERNEL_CONFIG = json.dumps({"source_repository": "szl-holdings/szl-kernels-live", "target": "SZLHOLDINGS/szl-kernels-live"}).encode()
 
 
 def digest(value: bytes) -> str:
@@ -100,6 +101,7 @@ def manifest_fixture() -> dict:
         kernel["pending_reason"] = None
         kernel["publisher_contract"]["identities"][0]["source_repository"] = "szl-holdings/szl-kernels-live"
         kernel["publisher_contract"]["identities"][0]["target"] = "SZLHOLDINGS/szl-kernels-live"
+        kernel["secret_execution_files"][".hf-space.json"] = digest(KERNEL_CONFIG)
         targets["szl-holdings/szl-kernels-live"] = kernel
     return {"schema": RB.SCHEMA, "source_repository": RB.SOURCE_REPOSITORY, "targets": targets}
 
@@ -110,10 +112,21 @@ def blob_values() -> dict[str, bytes]:
 
 class FakeAPI:
     def __init__(self, values: dict[str, bytes] | None = None, changed: int = 101) -> None:
-        self.values, self.changed, self.calls = values or blob_values(), changed, []
+        values = values or blob_values()
+        self.values, self.changed, self.calls = values, changed, []
+        self.values_by_repo = {
+            REPOSITORY: values,
+            "szl-holdings/szl-kernels-live": dict(values, **{".hf-space.json": KERNEL_CONFIG}),
+        }
         self.pull_heads, self.pull_bases, self.pull_reads = [HEAD, HEAD, HEAD], [BASE, BASE, BASE], 0
         self.ref_heads = {"heads/gh-readonly-queue/main/pr-1": HEAD, "heads/main": BASE}
         self.tree_extra, self.fail_path, self.duplicate_page = [], None, False
+
+    def _repo_values(self, repository: str) -> dict[str, bytes]:
+        return self.values_by_repo.get(repository, self.values)
+
+    def _repository_from_path(self, path: str) -> str:
+        return path.removeprefix("/repos/").split("/git/", 1)[0]
 
     def _pull(self) -> dict:
         head = self.pull_heads[min(self.pull_reads, len(self.pull_heads) - 1)]
@@ -140,9 +153,11 @@ class FakeAPI:
             sha = path.rsplit("/", 1)[1]
             return {"sha": sha, "tree": {"sha": TREE}}
         if "/git/trees/" in path:
+            repository = self._repository_from_path(path)
+            values = self._repo_values(repository)
             _, sha_fragment = path.split("/git/trees/", 1)
             sha = sha_fragment.split("?", 1)[0]
-            rows = [{"path": name, "mode": "100644", "type": "blob", "sha": f"{index:040x}", "size": len(value)} for index, (name, value) in enumerate(self.values.items(), 10)]
+            rows = [{"path": name, "mode": "100644", "type": "blob", "sha": f"{index:040x}", "size": len(value)} for index, (name, value) in enumerate(values.items(), 10)]
             return {"sha": sha, "truncated": False, "tree": rows + self.tree_extra}
         if path == f"/repos/{REPOSITORY}/pulls/7":
             return self._pull()
@@ -156,14 +171,14 @@ class FakeAPI:
             if self.duplicate_page and page == 2 and rows:
                 rows[0]["filename"] = "docs/file-1-0.txt"
             return rows
-        if path == f"/repos/{REPOSITORY}/git/commits/{HEAD}":
-            return {"sha": HEAD, "tree": {"sha": TREE}}
         if path == f"/repos/{REPOSITORY}/git/trees/{TREE}?recursive=1":
             rows = [{"path": name, "mode": "100644", "type": "blob", "sha": f"{index:040x}", "size": len(value)} for index, (name, value) in enumerate(self.values.items(), 10)]
             return {"sha": TREE, "truncated": False, "tree": rows + self.tree_extra}
         if "/git/blobs/" in path:
             sha = path.rsplit("/", 1)[1]
-            value = list(self.values.values())[int(sha, 16) - 10]
+            repository = self._repository_from_path(path)
+            values = self._repo_values(repository)
+            value = list(values.values())[int(sha, 16) - 10]
             return {"sha": sha, "encoding": "base64", "size": len(value), "content": base64.b64encode(value).decode()}
         if "/git/ref/" in path:
             return {"object": {"sha": self.ref_heads[unquote(path.split("/git/ref/", 1)[1])]}}
