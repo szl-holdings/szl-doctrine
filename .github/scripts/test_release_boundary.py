@@ -116,6 +116,7 @@ for index in range(22):
 VALIDATOR_LOCK = b"PyYAML==6.0.3 --hash=sha256:" + b"b" * 64 + b"\n"
 TEST_RUNTIME = b"from unittest import TestCase\n"
 CONFIG = json.dumps({"source_repository": REPOSITORY, "target": "SZLHOLDINGS/lambda-gate-holo"}).encode()
+KERNEL_CONFIG = json.dumps({"source_repository": "szl-holdings/szl-kernels-live", "target": "SZLHOLDINGS/szl-kernels-live"}).encode()
 
 
 def digest(value: bytes) -> str:
@@ -153,6 +154,16 @@ def manifest_fixture() -> dict:
         value["publisher_contract"]["identities"][0]["target"] = repository.replace("szl-holdings/", "SZLHOLDINGS/")
         targets[repository] = value
     targets[REPOSITORY] = entry
+    if "szl-holdings/szl-kernels-live" in RB.TARGET_IDS:
+        kernel = copy.deepcopy(entry)
+        kernel["repository_id"] = RB.TARGET_IDS["szl-holdings/szl-kernels-live"]
+        kernel["state"] = "ACTIVE"
+        kernel["observed_candidate_sha"] = "f" * 40
+        kernel["pending_reason"] = None
+        kernel["publisher_contract"]["identities"][0]["source_repository"] = "szl-holdings/szl-kernels-live"
+        kernel["publisher_contract"]["identities"][0]["target"] = "SZLHOLDINGS/szl-kernels-live"
+        kernel["secret_execution_files"][".hf-space.json"] = digest(KERNEL_CONFIG)
+        targets["szl-holdings/szl-kernels-live"] = kernel
     return {"schema": RB.SCHEMA, "source_repository": RB.SOURCE_REPOSITORY, "targets": targets}
 
 
@@ -162,10 +173,21 @@ def blob_values() -> dict[str, bytes]:
 
 class FakeAPI:
     def __init__(self, values: dict[str, bytes] | None = None, changed: int = 101) -> None:
-        self.values, self.changed, self.calls = values or blob_values(), changed, []
+        values = values or blob_values()
+        self.values, self.changed, self.calls = values, changed, []
+        self.values_by_repo = {
+            REPOSITORY: values,
+            "szl-holdings/szl-kernels-live": dict(values, **{".hf-space.json": KERNEL_CONFIG}),
+        }
         self.pull_heads, self.pull_bases, self.pull_reads = [HEAD, HEAD, HEAD], [BASE, BASE, BASE], 0
         self.ref_heads = {"heads/gh-readonly-queue/main/pr-1": HEAD, "heads/main": BASE}
         self.tree_extra, self.fail_path, self.duplicate_page = [], None, False
+
+    def _repo_values(self, repository: str) -> dict[str, bytes]:
+        return self.values_by_repo.get(repository, self.values)
+
+    def _repository_from_path(self, path: str) -> str:
+        return path.removeprefix("/repos/").split("/git/", 1)[0]
 
     def _pull(self) -> dict:
         head = self.pull_heads[min(self.pull_reads, len(self.pull_heads) - 1)]
@@ -180,6 +202,24 @@ class FakeAPI:
             raise RB.BoundaryError("fixture API failure")
         if path == f"/repos/{REPOSITORY}":
             return {"id": REPOSITORY_ID, "full_name": REPOSITORY, "default_branch": "main"}
+        if path.startswith("/repos/"):
+            repository = path.removeprefix("/repos/")
+            if repository in RB.TARGET_IDS:
+                return {
+                    "id": RB.TARGET_IDS[repository],
+                    "full_name": repository,
+                    "default_branch": "main",
+                }
+        if "/git/commits/" in path:
+            sha = path.rsplit("/", 1)[1]
+            return {"sha": sha, "tree": {"sha": TREE}}
+        if "/git/trees/" in path:
+            repository = self._repository_from_path(path)
+            values = self._repo_values(repository)
+            _, sha_fragment = path.split("/git/trees/", 1)
+            sha = sha_fragment.split("?", 1)[0]
+            rows = [{"path": name, "mode": "100644", "type": "blob", "sha": f"{index:040x}", "size": len(value)} for index, (name, value) in enumerate(values.items(), 10)]
+            return {"sha": sha, "truncated": False, "tree": rows + self.tree_extra}
         if path == f"/repos/{REPOSITORY}/pulls/7":
             return self._pull()
         if "/pulls/7/files?" in path:
@@ -192,14 +232,14 @@ class FakeAPI:
             if self.duplicate_page and page == 2 and rows:
                 rows[0]["filename"] = "docs/file-1-0.txt"
             return rows
-        if path == f"/repos/{REPOSITORY}/git/commits/{HEAD}":
-            return {"sha": HEAD, "tree": {"sha": TREE}}
         if path == f"/repos/{REPOSITORY}/git/trees/{TREE}?recursive=1":
             rows = [{"path": name, "mode": "100644", "type": "blob", "sha": f"{index:040x}", "size": len(value)} for index, (name, value) in enumerate(self.values.items(), 10)]
             return {"sha": TREE, "truncated": False, "tree": rows + self.tree_extra}
         if "/git/blobs/" in path:
             sha = path.rsplit("/", 1)[1]
-            value = list(self.values.values())[int(sha, 16) - 10]
+            repository = self._repository_from_path(path)
+            values = self._repo_values(repository)
+            value = list(values.values())[int(sha, 16) - 10]
             return {"sha": sha, "encoding": "base64", "size": len(value), "content": base64.b64encode(value).decode()}
         if "/git/ref/" in path:
             return {"object": {"sha": self.ref_heads[unquote(path.split("/git/ref/", 1)[1])]}}
@@ -237,9 +277,18 @@ class BoundaryTests(unittest.TestCase):
         self.manifest = manifest_fixture()
         self.entry = self.manifest["targets"][REPOSITORY]
         self.env = {"EVENT_REPOSITORY": REPOSITORY, "EVENT_REPOSITORY_ID": str(REPOSITORY_ID), "EVENT_HEAD_SHA": HEAD, "GITHUB_SHA": HEAD}
+        self.pending_targets = sorted(
+            name for name, item in self.manifest["targets"].items() if item["state"] == "PENDING"
+        )
+        self.active_targets = sorted(
+            name for name, item in self.manifest["targets"].items() if item["state"] == "ACTIVE"
+        )
 
     def test_repository_manifest_activates_exact_signed_successor_heads(self) -> None:
         manifest = RB.load_manifest(MANIFEST_PATH)
+        pending_targets = sorted(
+            name for name, item in manifest["targets"].items() if item["state"] == "PENDING"
+        )
         self.assertEqual(
             {name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
             set(manifest["targets"]),
@@ -249,6 +298,7 @@ class BoundaryTests(unittest.TestCase):
             {
                 name: item["observed_candidate_sha"]
                 for name, item in manifest["targets"].items()
+                if item["state"] == "PENDING"
             },
             {
                 "szl-holdings/energy-attest-holo": "bb994489a1f6ff8121e9c60d43f0554aa61a676f",
@@ -259,6 +309,7 @@ class BoundaryTests(unittest.TestCase):
                 "szl-holdings/szl-provctl-live": "f58882d1120f77a952d009b26bee8e40192df091",
             },
         )
+        self.assertIsNotNone(kernel["observed_candidate_sha"])
         for name, item in manifest["targets"].items():
             self.assertEqual(item["state"], "ACTIVE")
             self.assertIsNone(item["pending_reason"])
@@ -351,7 +402,7 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(result["status"], "MANIFEST_INCOMPLETE_PENDING_TARGETS")
         self.assertFalse(result["authorization_complete"])
         self.assertEqual(result["targets"][0]["status"], "MANIFEST_TARGET_VERIFIED")
-        self.assertEqual(len(result["pending_targets"]), 5)
+        self.assertEqual(result["pending_targets"], self.pending_targets)
 
     def test_pending_fails_before_api(self) -> None:
         pending = copy.deepcopy(self.manifest)
