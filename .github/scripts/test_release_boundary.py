@@ -9,8 +9,8 @@ import hashlib
 import importlib.util
 import json
 import os
-import re
 from pathlib import Path
+import re
 import unittest
 from unittest.mock import patch
 from urllib.parse import unquote
@@ -28,8 +28,10 @@ REPOSITORY_ID = 1295931629
 HEAD, BASE, TREE = "1" * 40, "2" * 40, "3" * 40
 
 
-WORKFLOW_FIXTURE_PATH = HERE / "fixtures" / "hf-static-space.yml"
-WORKFLOW = WORKFLOW_FIXTURE_PATH.read_text(encoding="utf-8")
+WORKFLOW = (
+    HERE.parent / "release-boundary" / "fixtures" / "hf-static-space.yml"
+).read_text(encoding="utf-8")
+
 PUBLISHER = b"""import json
 governed_schema = "szl.github-governed-merge/v3"
 pr_body_schema = "szl.pr-head/v1"
@@ -41,6 +43,7 @@ verify_live_tree(bundle, tree, allowed)
 _fetch_public_index(origin, source_sha)
 failure_output_path = output
 final_authorization = require_governed_main(source_sha, config_path)
+public_main_freshness = require_public_main_fresh(source_sha, output_path, config_path)
 governance_authorization = publisher_environment = measurement_evidence_upload = True
 run_attempt = check_suite_id = 1
 publisher_executable_rebind = True
@@ -72,10 +75,10 @@ def manifest_fixture() -> dict:
             "publisher_script": "scripts/hf_static_space.py",
             "dependency_lock": "requirements/hf-publisher.lock",
             "protected_execution_roots": ["scripts", "tests"],
-            "isolated_invocation": "\"$PUBLISHER_PYTHON\" -I \"$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py\"",
+            "isolated_invocation": "/usr/bin/env -i",
             "identities": [{"kind": "json", "path": ".hf-space.json", "source_repository": REPOSITORY, "target": "SZLHOLDINGS/lambda-gate-holo"}],
-            "required_workflow_markers": ["on:", "push:", "branches: [main]", "permissions: {}", "contents: read", "id-token: write", "attestations: write", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "needs.authorize.result == 'success'", "include-hidden-files: true", "Rebind five publisher inputs before interpretation or credentials", "GITHUB_TOKEN: ${{ github.token }}", "HF_TOKEN: ${{ secrets.HF_TOKEN }}"],
-            "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "szl.github-governed-merge/v3", "szl.pr-head/v1", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "verify_live_tree", "_fetch_public_index", "failure_output_path", "run_attempt", "check_suite_id", "publisher_executable_rebind", "governance_authorization", "publisher_environment", "measurement_evidence_upload", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "receipt_minted"],
+            "required_workflow_markers": ["on:", "push:", "branches: [main]", "permissions: {}", "contents: read", "id-token: write", "attestations: write", "concurrency:", "cancel-in-progress: false", "authorize-exact-governed-merge", "publish-exact-protected-main", "measure-exact-publication", "attest-exact-publication", "needs.authorize.result == 'success'", "include-hidden-files: true", "Rebind five publisher inputs before interpretation or credentials", "Reconfirm public main at exact source revision without credentials", "publisher-freshness", "github.run_attempt", "PATH=\"$RUNNER_TEMP/hf-publisher-venv/bin:/usr/bin:/bin\"", "Rebind five measurement inputs before interpretation or credentials", "/usr/bin/env -i", "terminal_synthesizer_bootstrap", "ACTIONS_ID_TOKEN_REQUEST_TOKEN: \"\"", "GITHUB_TOKEN: ${{ github.token }}", "HF_TOKEN: ${{ secrets.HF_TOKEN }}"],
+            "required_publisher_markers": ["parent_commit=before_sha", "delete_patterns=\"*\"", "szl.github-governed-merge/v3", "szl.pr-head/v1", "load_governed_merge", "required_workflow", "final_authorization = require_governed_main", "require_public_main_fresh", "verify_live_tree", "_fetch_public_index", "failure_output_path", "run_attempt", "check_suite_id", "publisher_executable_rebind", "governance_authorization", "publisher_environment", "measurement_evidence_upload", "OIDC_ATTESTED_DEPLOYMENT", "WORKFLOW_STAGE_FAILURE", "receipt_minted"],
         },
     }
     targets = {}
@@ -99,15 +102,16 @@ def blob_values() -> dict[str, bytes]:
 class FakeAPI:
     def __init__(self, values: dict[str, bytes] | None = None, changed: int = 101) -> None:
         self.values, self.changed, self.calls = values or blob_values(), changed, []
-        self.pull_heads, self.pull_reads = [HEAD, HEAD, HEAD], 0
+        self.pull_heads, self.pull_bases, self.pull_reads = [HEAD, HEAD, HEAD], [BASE, BASE, BASE], 0
         self.ref_heads = {"heads/gh-readonly-queue/main/pr-1": HEAD, "heads/main": BASE}
         self.tree_extra, self.fail_path, self.duplicate_page = [], None, False
 
     def _pull(self) -> dict:
         head = self.pull_heads[min(self.pull_reads, len(self.pull_heads) - 1)]
+        base = self.pull_bases[min(self.pull_reads, len(self.pull_bases) - 1)]
         self.pull_reads += 1
         repo = {"id": REPOSITORY_ID, "full_name": REPOSITORY}
-        return {"number": 7, "state": "open", "changed_files": self.changed, "head": {"sha": head, "repo": repo}, "base": {"sha": BASE, "ref": "main", "repo": repo}}
+        return {"number": 7, "state": "open", "changed_files": self.changed, "head": {"sha": head, "repo": repo}, "base": {"sha": base, "ref": "main", "repo": repo}}
 
     def get(self, path: str) -> object:
         self.calls.append(path)
@@ -142,7 +146,25 @@ class FakeAPI:
 
 
 def pr_event() -> dict:
-    return {"number": 7, "repository": {"id": REPOSITORY_ID, "full_name": REPOSITORY}, "pull_request": {"head": {"sha": HEAD}}}
+    return {"number": 7, "repository": {"id": REPOSITORY_ID, "full_name": REPOSITORY}, "pull_request": {"head": {"sha": HEAD}, "base": {"sha": BASE}}}
+
+
+def remove_named_step(workflow: str, job_id: str, name: str) -> str:
+    job = re.search(rf"(?m)^  {re.escape(job_id)}:\r?$", workflow)
+    if job is None:
+        raise AssertionError(f"fixture job not found: {job_id}")
+    next_job = re.search(r"(?m)^  [a-z][a-z0-9_-]*:\r?$", workflow[job.end() :])
+    job_end = job.end() + next_job.start() if next_job is not None else len(workflow)
+    job_text = workflow[job.start() : job_end]
+    match = re.search(
+        rf"(?ms)^      - name: {re.escape(name)}\r?\n.*?"
+        r"(?=^      - name: |\Z)",
+        job_text,
+    )
+    if match is None:
+        raise AssertionError(f"fixture step not found: {job_id}/{name}")
+    start, end = job.start() + match.start(), job.start() + match.end()
+    return workflow[:start] + workflow[end:]
 
 
 def merge_event() -> dict:
@@ -155,11 +177,11 @@ class BoundaryTests(unittest.TestCase):
         self.entry = self.manifest["targets"][REPOSITORY]
         self.env = {"EVENT_REPOSITORY": REPOSITORY, "EVENT_REPOSITORY_ID": str(REPOSITORY_ID), "EVENT_HEAD_SHA": HEAD, "GITHUB_SHA": HEAD}
 
-    def test_repository_manifest_has_five_active_heads_and_frozen_kernel(self) -> None:
+    def test_repository_manifest_is_frozen_until_signed_successor_heads(self) -> None:
         manifest = RB.load_manifest(MANIFEST_PATH)
         self.assertEqual(
             {name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
-            set(RB.TARGET_IDS) - {"szl-holdings/szl-kernels-live"},
+            set(),
         )
         kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
         self.assertEqual(kernel["state"], "PENDING")
@@ -169,15 +191,19 @@ class BoundaryTests(unittest.TestCase):
                 for name, item in manifest["targets"].items()
             },
             {
-                "szl-holdings/energy-attest-holo": "2bd75342f2bbc39be0e4dd93356b42c10574e489",
-                "szl-holdings/governed-norm-holo": "2aff8ff63f0bd8c449a8bf0dcfabd146e912c9c1",
-                "szl-holdings/lambda-gate-holo": "6bde251c3f37b003cb0754b69b4c63e04c634971",
-                "szl-holdings/receipt-chain-live": "d8b2192d378aec9761034dd471045a0e1d36d92e",
+                "szl-holdings/energy-attest-holo": None,
+                "szl-holdings/governed-norm-holo": None,
+                "szl-holdings/lambda-gate-holo": None,
+                "szl-holdings/receipt-chain-live": None,
                 "szl-holdings/szl-kernels-live": None,
-                "szl-holdings/szl-provctl-live": "98ba2d50833d0d8215c54d4b415e6c0578315219",
+                "szl-holdings/szl-provctl-live": None,
             },
         )
         for name, item in manifest["targets"].items():
+            self.assertEqual(item["state"], "PENDING")
+            self.assertTrue(item["pending_reason"])
+            self.assertEqual(set(item["workflow_files"].values()), {"PENDING"})
+            self.assertEqual(set(item["secret_execution_files"].values()), {"PENDING"})
             markers = set(item["publisher_contract"]["required_workflow_markers"])
             if name != "szl-holdings/szl-kernels-live":
                 self.assertIn("permissions: {}", markers)
@@ -199,10 +225,12 @@ class BoundaryTests(unittest.TestCase):
                 "requirements/hf-publisher.lock",
                 "scripts/build_hf_space_bundle.py",
                 "scripts/deploy_hf_space.py",
+                "scripts/github_governed_merge.py",
                 "scripts/kernel_portfolio_truth.mjs",
                 "scripts/snapshot_kernel_contracts.py",
                 "scripts/verify_kernel_registry.py",
                 "tests/fixtures/hf-static-window-huggingface-injection.html",
+                "tests/test_github_governed_merge.py",
                 "tests/test_hf_space_bundle.py",
                 "tests/test_kernel_portfolio_truth.mjs",
                 "tests/test_kernel_registry.py",
@@ -210,15 +238,13 @@ class BoundaryTests(unittest.TestCase):
         )
         self.assertEqual(set(kernel["workflow_files"].values()), {"PENDING"})
         self.assertEqual(set(kernel["secret_execution_files"].values()), {"PENDING"})
-        all_pending = copy.deepcopy(self.manifest)
-        active = all_pending["targets"][REPOSITORY]
-        active["state"] = "PENDING"
-        active["observed_candidate_sha"] = None
-        active["pending_reason"] = "fixture pending"
-        active["workflow_files"] = {path: "PENDING" for path in active["workflow_files"]}
-        active["secret_execution_files"] = {path: "PENDING" for path in active["secret_execution_files"]}
         with self.assertRaisesRegex(RB.BoundaryError, "no ACTIVE"):
-            RB.verify_all_active(all_pending, FakeAPI())
+            RB.verify_all_active(manifest, FakeAPI())
+        explicit_pending = RB.verify_all_active(manifest, FakeAPI(), allow_explicit_pending=True)
+        self.assertEqual(explicit_pending["status"], "MANIFEST_INCOMPLETE_PENDING_TARGETS")
+        self.assertEqual(explicit_pending["targets"], [])
+        self.assertEqual(len(explicit_pending["pending_targets"]), 6)
+        self.assertFalse(explicit_pending["authorization_complete"])
 
     def test_kernel_manifest_is_explicitly_fail_closed(self) -> None:
         kernel = RB.load_manifest(MANIFEST_PATH)["targets"]["szl-holdings/szl-kernels-live"]
@@ -263,6 +289,13 @@ class BoundaryTests(unittest.TestCase):
         api.pull_heads = [HEAD, "9" * 40, "9" * 40]
         with patch.dict(os.environ, self.env, clear=True), self.assertRaisesRegex(RB.BoundaryError, "drifted"):
             RB.enforce(self.manifest, pr_event(), api)
+
+    def test_same_count_base_replacement_fails_at_each_reread(self) -> None:
+        for bases in ([BASE, "8" * 40, "8" * 40], [BASE, BASE, "8" * 40]):
+            api = FakeAPI()
+            api.pull_bases = bases
+            with self.subTest(bases=bases), patch.dict(os.environ, self.env, clear=True), self.assertRaisesRegex(RB.BoundaryError, "drifted"):
+                RB.enforce(self.manifest, pr_event(), api)
 
     def test_duplicate_and_count_mismatch_fail(self) -> None:
         duplicate = FakeAPI()
@@ -331,12 +364,16 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(RB.BoundaryError, "GITHUB_TOKEN"):
             RB.GitHubAPI("")
         changed = blob_values()
-        changed[".github/workflows/hf-static-space.yml"] = WORKFLOW.replace("\"$PUBLISHER_PYTHON\" -I", "\"$PUBLISHER_PYTHON\"").encode()
+        changed[".github/workflows/hf-static-space.yml"] = WORKFLOW.replace(
+            '"$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" deploy',
+            '"$PUBLISHER_PYTHON" "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" deploy',
+            1,
+        ).encode()
         entry = copy.deepcopy(self.entry)
         entry["workflow_files"][".github/workflows/hf-static-space.yml"] = digest(changed[".github/workflows/hf-static-space.yml"])
-        # The hardened workflow is byte-exact. Rejection is the contract;
-        # diagnostic ordering inside the legacy structural parser is not.
-        with self.assertRaises(RB.BoundaryError):
+        with self.assertRaisesRegex(
+            RB.BoundaryError, "publisher mutation command|isolated"
+        ):
             RB.verify_candidate(FakeAPI(changed), REPOSITORY, HEAD, entry)
 
     def test_python_identities_bind_source_and_target_constant_groups(self) -> None:
@@ -425,11 +462,9 @@ class BoundaryTests(unittest.TestCase):
         baseline = blob_values()
 
         def rejected(workflow: str, message: str) -> None:
-            self.assertNotEqual(workflow, WORKFLOW)
             altered = dict(baseline)
             altered[workflow_path] = workflow.encode()
-            # Exact hardened-workflow rejection is the security invariant.
-            with self.assertRaises(RB.BoundaryError):
+            with self.assertRaisesRegex(RB.BoundaryError, message):
                 RB._publisher_contract(REPOSITORY, self.entry, altered)
 
         rejected(
@@ -470,7 +505,102 @@ class BoundaryTests(unittest.TestCase):
                 "hf-static-space-publication-stale",
                 1,
             ),
-            "artifact input|action binding",
+            "output map|artifact input|action binding",
+        )
+
+    def test_publisher_freshness_and_attempt_boundaries_fail_closed(self) -> None:
+        workflow_path = ".github/workflows/hf-static-space.yml"
+        baseline = blob_values()
+
+        def rejected(workflow: str, message: str) -> None:
+            altered = dict(baseline)
+            altered[workflow_path] = workflow.encode()
+            with self.assertRaisesRegex(RB.BoundaryError, message):
+                RB._publisher_contract(REPOSITORY, self.entry, altered)
+
+        rejected(
+            WORKFLOW.replace(
+                "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}",
+                "hf-static-space-publisher-input-${{ github.sha }}",
+                1,
+            ),
+            "output map|action binding|artifact input map",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "${{ needs.authorize.outputs.publisher-input-artifact-name }}",
+                "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}",
+                1,
+            ),
+            "action binding|artifact input map",
+        )
+        rejected(
+            WORKFLOW.replace(
+                'PATH="$RUNNER_TEMP/hf-publisher-venv/bin:/usr/bin:/bin"',
+                'PATH="$PUBLISHER_VENV/bin:/usr/bin:/bin"',
+                1,
+            ),
+            "publisher freshness command",
+        )
+        rejected(
+            WORKFLOW.replace(
+                '"$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" fresh-main',
+                '"$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" deploy',
+                1,
+            ),
+            "publisher freshness command",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "--stage publisher_freshness",
+                "--stage publisher_environment",
+                1,
+            ),
+            "publisher freshness failure command",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "        if: steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome == 'success' && steps.publisher-freshness.outcome == 'success'\n",
+                "        if: steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome == 'success'\n",
+                1,
+            ),
+            "step condition",
+        )
+        publish_name = "      - name: Publish exact bundle with only the Hugging Face credential\n"
+        before_publish, publish_and_after = WORKFLOW.split(publish_name, 1)
+        rejected(
+            before_publish
+            + publish_name
+            + publish_and_after.replace(
+                'PATH="$RUNNER_TEMP/hf-publisher-venv/bin:/usr/bin:/bin"',
+                'PATH="$PUBLISHER_VENV/bin:/usr/bin:/bin"',
+                1,
+            ),
+            "publisher mutation|dangling shell continuation",
+        )
+        rejected(
+            WORKFLOW.replace(
+                '            --freshness-output "$RUNNER_TEMP/publication-evidence/github-main-freshness.json"\n',
+                "",
+                1,
+            ),
+            "publisher mutation|dangling shell continuation",
+        )
+        rejected(
+            WORKFLOW.replace(
+                '            --bundle-outcome "${{ needs.authorize.outputs.bundle-outcome }}" \\\n',
+                "",
+                1,
+            ),
+            "terminal outcome synthesis",
+        )
+        rejected(
+            WORKFLOW.replace(
+                '          test "${{ steps.publisher-freshness.outcome }}" = "success"\n',
+                "",
+                1,
+            ),
+            "publisher success command",
         )
 
     def test_yaml_and_expression_bypasses_fail_closed(self) -> None:
@@ -478,11 +608,9 @@ class BoundaryTests(unittest.TestCase):
         baseline = blob_values()
 
         def rejected(workflow: str, message: str) -> None:
-            self.assertNotEqual(workflow, WORKFLOW)
             altered = dict(baseline)
             altered[workflow_path] = workflow.encode()
-            # Exact hardened-workflow rejection is the security invariant.
-            with self.assertRaises(RB.BoundaryError):
+            with self.assertRaisesRegex(RB.BoundaryError, message):
                 RB._publisher_contract(REPOSITORY, self.entry, altered)
 
         rejected(
@@ -501,6 +629,15 @@ class BoundaryTests(unittest.TestCase):
             ),
             "credential boundary|HF secret consumption",
         )
+        for expression in ("${{ toJSON(secrets) }}", "${{ secrets[env.HF_SECRET_NAME] }}"):
+            rejected(
+                WORKFLOW.replace("${{ secrets.HF_TOKEN }}", expression, 1),
+                "HF secret consumption",
+            )
+        rejected(
+            WORKFLOW.replace("${{ github.token }}", "${{ github['token'] }}", 1),
+            "GitHub token consumption",
+        )
         rejected(
             WORKFLOW.replace(
                 '            --failure-output "$RUNNER_TEMP/governed-merge-failure.json"',
@@ -508,23 +645,6 @@ class BoundaryTests(unittest.TestCase):
                 1,
             ),
             "authorization command is not exact and mandatory",
-        )
-        omitted_terminal_gate = re.sub(
-            r"(?ms)^      - name: Require exact governed authorization\n.*?"
-            r"(?=^      - name:|^  [a-z][a-z0-9_-]*:|\Z)",
-            "",
-            WORKFLOW,
-            count=1,
-        )
-        self.assertNotEqual(omitted_terminal_gate, WORKFLOW)
-        rejected(omitted_terminal_gate, "step sequence")
-        rejected(
-            WORKFLOW.replace(
-                "          set -euo pipefail\n",
-                "          set -euo pipefail\n          printf 'unbound shell body'\n",
-                1,
-            ),
-            "shell step bodies and environments",
         )
         rejected(
             WORKFLOW.replace(
@@ -568,12 +688,28 @@ class BoundaryTests(unittest.TestCase):
         )
         rejected(
             WORKFLOW.replace(
-                "      - name: Harden runner\n        uses:",
-                "      - name: Harden runner\n        if: always()\n        uses:",
+                "      - name: Download exact publisher outcome\n"
+                "        id: publisher-evidence-download\n"
+                "        continue-on-error: true\n"
+                "        uses:",
+                "      - name: Download exact publisher outcome\n"
+                "        id: publisher-evidence-download\n"
+                "        if: always()\n"
+                "        continue-on-error: true\n"
+                "        uses:",
                 1,
             ),
             "step fields",
         )
+
+        document = RB._workflow_document(WORKFLOW)
+        for job_id, job in document["jobs"].items():
+            for step in job["steps"]:
+                with self.subTest(job=job_id, missing_step=step["name"]):
+                    rejected(
+                        remove_named_step(WORKFLOW, job_id, step["name"]),
+                        "canonical steps",
+                    )
 
     def test_boundary_never_executes_target_and_source_workflow_is_pinned(self) -> None:
         tree = ast.parse((HERE / "release_boundary.py").read_text(encoding="utf-8"))
