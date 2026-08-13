@@ -5,17 +5,17 @@
                     "szl-holdings/energy-attest-holo":  {
                                                             "repository_id":  1295929955,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "bb994489a1f6ff8121e9c60d43f0554aa61a676f",
+                                                            "observed_candidate_sha":  "ef7a5ed446665d788625cbc2f4fb7c43a5334ac3",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                                                   ".github/workflows/hf-static-space.yml":  "ba09f9916a3114f44c22a54475947e45d3a256bf5fbe1c670b3a015620293359"
+                                                                                   ".github/workflows/hf-static-space.yml":  "29c6166108fa5edf46970f0dc72b98dbc3c74d3e8732ce79719b26d3eb2f5076"
                                                                                },
                                                             "secret_execution_files":  {
                                                                                            ".hf-space.json":  "1819b0cd12e8defb8c81bcb267461ce5b5e35ab980b6c80c3d22a3e55785714b",
                                                                                            "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                            "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                           "scripts/hf_static_space.py":  "a474edc74508eb7703709fc63a52897de72312d78ea21987475153bc974c7cdc",
-                                                                                           "tests/test_hf_static_space.py":  "c83c099462634bf28604c583464073f86d8e0722b133eba1d1a86a341811ec8b"
+                                                                                           "scripts/hf_static_space.py":  "f2dde7094b49d2c647c11f9d731325a5c768e9a4a6839ca67eecae36086cf4a5",
+                                                                                           "tests/test_hf_static_space.py":  "5f87d30432b8f2e9817affabda50f96556e8cba1c76c189273c0fc69a147a837"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
@@ -110,17 +110,17 @@
                     "szl-holdings/governed-norm-holo":  {
                                                             "repository_id":  1295931607,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "5072be516d9d3026b70dcde51feec0f40a0cbc5d",
+                                                            "observed_candidate_sha":  "22a8ed08d5630be6f0cb952fe86413b2b2c89e55",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                                                   ".github/workflows/hf-static-space.yml":  "ba09f9916a3114f44c22a54475947e45d3a256bf5fbe1c670b3a015620293359"
+                                                                                   ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
                                                                                },
                                                             "secret_execution_files":  {
                                                                                            ".hf-space.json":  "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
                                                                                            "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                            "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
                                                                                            "scripts/hf_static_space.py":  "a474edc74508eb7703709fc63a52897de72312d78ea21987475153bc974c7cdc",
-                                                                                           "tests/test_hf_static_space.py":  "c83c099462634bf28604c583464073f86d8e0722b133eba1d1a86a341811ec8b"
+                                                                                           "tests/test_hf_static_space.py":  "44b053a1b49f437414df05641f21ea05f1628b69d189f673f2f71a3b4834dd09"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
@@ -215,17 +215,17 @@
                     "szl-holdings/lambda-gate-holo":  {
                                                           "repository_id":  1295931629,
                                                           "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "1617bf6cafe33ba56a3e35f9dc4c61e150ab9919",
+                                                          "observed_candidate_sha":  "4faea953fec6b72cd482aca9f1ee0d5b6f0d90ae",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                                                 ".github/workflows/hf-static-space.yml":  "ba09f9916a3114f44c22a54475947e45d3a256bf5fbe1c670b3a015620293359"
+                                                                                 ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
                                                                              },
                                                           "secret_execution_files":  {
                                                                                          ".hf-space.json":  "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
                                                                                          "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                          "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
                                                                                          "scripts/hf_static_space.py":  "a474edc74508eb7703709fc63a52897de72312d78ea21987475153bc974c7cdc",
-                                                                                         "tests/test_hf_static_space.py":  "c83c099462634bf28604c583464073f86d8e0722b133eba1d1a86a341811ec8b"
+                                                                                         "tests/test_hf_static_space.py":  "b45d870493514f7d5406d5a7510f92a8036d775af9e43c837c8b93cb4f7ac26e"
                                                                                      },
                                                           "mutable_public_assets":  [
                                                                                         "LICENSE",
@@ -320,17 +320,17 @@
                     "szl-holdings/receipt-chain-live":  {
                                                             "repository_id":  1295940016,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "4569e00d52aa050faa20dd84dccad7bb19098566",
+                                                            "observed_candidate_sha":  "6852867b9bac92d5ea19412c8b1ff26e33ab3494",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                                                   ".github/workflows/hf-static-space.yml":  "ba09f9916a3114f44c22a54475947e45d3a256bf5fbe1c670b3a015620293359"
+                                                                                   ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
                                                                                },
                                                             "secret_execution_files":  {
                                                                                            ".hf-space.json":  "4fc85a455d2ea0bb7222c166df55e663eb20cceb9caedf245373402dcd5f024e",
                                                                                            "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                            "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
                                                                                            "scripts/hf_static_space.py":  "a474edc74508eb7703709fc63a52897de72312d78ea21987475153bc974c7cdc",
-                                                                                           "tests/test_hf_static_space.py":  "c83c099462634bf28604c583464073f86d8e0722b133eba1d1a86a341811ec8b"
+                                                                                           "tests/test_hf_static_space.py":  "44b053a1b49f437414df05641f21ea05f1628b69d189f673f2f71a3b4834dd09"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
@@ -425,10 +425,10 @@
                     "szl-holdings/szl-kernels-live":  {
                                                           "repository_id":  1295941334,
                                                           "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "58ee0fb964dd2f5dfc7bd9f4f24f0f8772d2d48f",
+                                                          "observed_candidate_sha":  "07c11e05ef1dbf40810f54a178b5b4b95b988edf",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                                                 ".github/workflows/hf-space-deploy.yml":  "68c5f0dede4be94823168a5abd16976ca32012f2538383560e58a991da9ef63f",
+                                                                                 ".github/workflows/hf-space-deploy.yml":  "04bd0c3580acfd882690a20626e6b4f09a3ece2c2dd08f9eb8018861633fd061",
                                                                                  ".github/workflows/kernel-contracts.yml":  "398970dfe01657119a05d2049836a1ad134f89c5d0cca9760960ff72b2afa95c"
                                                                              },
                                                           "secret_execution_files":  {
@@ -440,7 +440,7 @@
                                                                                          "scripts/verify_kernel_registry.py":  "651d3da3a64f9180a7d47ebb577e870c6d585c171bfc945f4bdfeb17980a259c",
                                                                                          "tests/fixtures/hf-static-window-huggingface-injection.html":  "50e110935e42b44c4ea82b3544e2089de00a4082635d73931d14af5ab3d9b9de",
                                                                                          "tests/test_hf_space_bundle.py":  "dc887398e757f277590b7c7a1834237ba6102f9c99af968a4df3b373371d3cf5",
-                                                                                         "tests/test_hf_space_workflow_contract.py":  "edcdcf0f5b00f3f6d84ae5968bb0c67fa11b3281bf1c1b22f1e6321b752d926d",
+                                                                                         "tests/test_hf_space_workflow_contract.py":  "8c5472aef4155d690cce97ed15df4454d9ec9901bc02ca11b37c6279348c88c6",
                                                                                          "tests/test_kernel_portfolio_truth.mjs":  "7751d55081a2946f56bfec888948c4bf5d5880b96092d53458a92b4f2c55478d",
                                                                                          "tests/test_kernel_registry.py":  "6c8d2827f5f1c37ec353655c46f45100f046cb767da39ab45f9cd3b98bc5957b",
                                                                                          "scripts/github_governed_merge.py":  "f385d7d85302e569345e249229eb4ecbcfdde19739131ab3eadea31534afcf98",
@@ -575,17 +575,17 @@
                     "szl-holdings/szl-provctl-live":  {
                                                           "repository_id":  1295941247,
                                                           "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "f58882d1120f77a952d009b26bee8e40192df091",
+                                                          "observed_candidate_sha":  "d478f0a97eef4b347a0ff5a7e103bde77feb00b6",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                                                 ".github/workflows/hf-static-space.yml":  "ba09f9916a3114f44c22a54475947e45d3a256bf5fbe1c670b3a015620293359"
+                                                                                 ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
                                                                              },
                                                           "secret_execution_files":  {
                                                                                          ".hf-space.json":  "24f23b8e01c6d53f82b387de9041d735007a78f175cf523dcefbca198ba193a4",
                                                                                          "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                          "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
                                                                                          "scripts/hf_static_space.py":  "a474edc74508eb7703709fc63a52897de72312d78ea21987475153bc974c7cdc",
-                                                                                         "tests/test_hf_static_space.py":  "c83c099462634bf28604c583464073f86d8e0722b133eba1d1a86a341811ec8b"
+                                                                                         "tests/test_hf_static_space.py":  "b45d870493514f7d5406d5a7510f92a8036d775af9e43c837c8b93cb4f7ac26e"
                                                                                      },
                                                           "mutable_public_assets":  [
                                                                                         "LICENSE",
