@@ -5,17 +5,17 @@
                     "szl-holdings/energy-attest-holo":  {
                                                             "repository_id":  1295929955,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "3709eba7e46c69d4879adca1c192cec599bdcb20",
+                                                            "observed_candidate_sha":  "bb994489a1f6ff8121e9c60d43f0554aa61a676f",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                                                   ".github/workflows/hf-static-space.yml":  "8aaf0bb3703b8bf937a6f574debe1837a69611b80efdccf1bc3b16754bdee276"
+                                                                                   ".github/workflows/hf-static-space.yml":  "ba09f9916a3114f44c22a54475947e45d3a256bf5fbe1c670b3a015620293359"
                                                                                },
                                                             "secret_execution_files":  {
                                                                                            ".hf-space.json":  "1819b0cd12e8defb8c81bcb267461ce5b5e35ab980b6c80c3d22a3e55785714b",
                                                                                            "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                            "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
                                                                                            "scripts/hf_static_space.py":  "a474edc74508eb7703709fc63a52897de72312d78ea21987475153bc974c7cdc",
-                                                                                           "tests/test_hf_static_space.py":  "7715942457cf541cfe2aac3a9cfb6f6c43e5f817a1dfb4c63191618b0143ba68"
+                                                                                           "tests/test_hf_static_space.py":  "c83c099462634bf28604c583464073f86d8e0722b133eba1d1a86a341811ec8b"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
@@ -110,17 +110,17 @@
                     "szl-holdings/governed-norm-holo":  {
                                                             "repository_id":  1295931607,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "c113a178d0b34445e1d09ac2567a75dba6c26db6",
+                                                            "observed_candidate_sha":  "5072be516d9d3026b70dcde51feec0f40a0cbc5d",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                                                   ".github/workflows/hf-static-space.yml":  "8aaf0bb3703b8bf937a6f574debe1837a69611b80efdccf1bc3b16754bdee276"
+                                                                                   ".github/workflows/hf-static-space.yml":  "ba09f9916a3114f44c22a54475947e45d3a256bf5fbe1c670b3a015620293359"
                                                                                },
                                                             "secret_execution_files":  {
                                                                                            ".hf-space.json":  "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
                                                                                            "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                            "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
                                                                                            "scripts/hf_static_space.py":  "a474edc74508eb7703709fc63a52897de72312d78ea21987475153bc974c7cdc",
-                                                                                           "tests/test_hf_static_space.py":  "7715942457cf541cfe2aac3a9cfb6f6c43e5f817a1dfb4c63191618b0143ba68"
+                                                                                           "tests/test_hf_static_space.py":  "c83c099462634bf28604c583464073f86d8e0722b133eba1d1a86a341811ec8b"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
@@ -215,17 +215,17 @@
                     "szl-holdings/lambda-gate-holo":  {
                                                           "repository_id":  1295931629,
                                                           "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "ca3cdb7451056e8b39229e3d1eb40f5be475a294",
+                                                          "observed_candidate_sha":  "1617bf6cafe33ba56a3e35f9dc4c61e150ab9919",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                                                 ".github/workflows/hf-static-space.yml":  "8aaf0bb3703b8bf937a6f574debe1837a69611b80efdccf1bc3b16754bdee276"
+                                                                                 ".github/workflows/hf-static-space.yml":  "ba09f9916a3114f44c22a54475947e45d3a256bf5fbe1c670b3a015620293359"
                                                                              },
                                                           "secret_execution_files":  {
                                                                                          ".hf-space.json":  "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
                                                                                          "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                          "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
                                                                                          "scripts/hf_static_space.py":  "a474edc74508eb7703709fc63a52897de72312d78ea21987475153bc974c7cdc",
-                                                                                         "tests/test_hf_static_space.py":  "7715942457cf541cfe2aac3a9cfb6f6c43e5f817a1dfb4c63191618b0143ba68"
+                                                                                         "tests/test_hf_static_space.py":  "c83c099462634bf28604c583464073f86d8e0722b133eba1d1a86a341811ec8b"
                                                                                      },
                                                           "mutable_public_assets":  [
                                                                                         "LICENSE",
@@ -320,17 +320,17 @@
                     "szl-holdings/receipt-chain-live":  {
                                                             "repository_id":  1295940016,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "9c12c78d8d91c769b76caf18353120b21e1e5158",
+                                                            "observed_candidate_sha":  "4569e00d52aa050faa20dd84dccad7bb19098566",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
-                                                                                   ".github/workflows/hf-static-space.yml":  "8aaf0bb3703b8bf937a6f574debe1837a69611b80efdccf1bc3b16754bdee276"
+                                                                                   ".github/workflows/hf-static-space.yml":  "ba09f9916a3114f44c22a54475947e45d3a256bf5fbe1c670b3a015620293359"
                                                                                },
                                                             "secret_execution_files":  {
                                                                                            ".hf-space.json":  "4fc85a455d2ea0bb7222c166df55e663eb20cceb9caedf245373402dcd5f024e",
                                                                                            "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                            "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
                                                                                            "scripts/hf_static_space.py":  "a474edc74508eb7703709fc63a52897de72312d78ea21987475153bc974c7cdc",
-                                                                                           "tests/test_hf_static_space.py":  "7715942457cf541cfe2aac3a9cfb6f6c43e5f817a1dfb4c63191618b0143ba68"
+                                                                                           "tests/test_hf_static_space.py":  "c83c099462634bf28604c583464073f86d8e0722b133eba1d1a86a341811ec8b"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
@@ -425,10 +425,10 @@
                     "szl-holdings/szl-kernels-live":  {
                                                           "repository_id":  1295941334,
                                                           "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "38d7304c4f5b555346e5ab61b2f936075a8f4630",
+                                                          "observed_candidate_sha":  "58ee0fb964dd2f5dfc7bd9f4f24f0f8772d2d48f",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                                                 ".github/workflows/hf-space-deploy.yml":  "a87785dfe9fceb9dda86cb8fc15fc3a00ed35834da86c4664d3fab6adf348677",
+                                                                                 ".github/workflows/hf-space-deploy.yml":  "68c5f0dede4be94823168a5abd16976ca32012f2538383560e58a991da9ef63f",
                                                                                  ".github/workflows/kernel-contracts.yml":  "398970dfe01657119a05d2049836a1ad134f89c5d0cca9760960ff72b2afa95c"
                                                                              },
                                                           "secret_execution_files":  {
@@ -440,7 +440,7 @@
                                                                                          "scripts/verify_kernel_registry.py":  "651d3da3a64f9180a7d47ebb577e870c6d585c171bfc945f4bdfeb17980a259c",
                                                                                          "tests/fixtures/hf-static-window-huggingface-injection.html":  "50e110935e42b44c4ea82b3544e2089de00a4082635d73931d14af5ab3d9b9de",
                                                                                          "tests/test_hf_space_bundle.py":  "dc887398e757f277590b7c7a1834237ba6102f9c99af968a4df3b373371d3cf5",
-                                                                                         "tests/test_hf_space_workflow_contract.py":  "7eaa9bb1697bbe1c0d22b754b890d6d6026cca057fb86d7780f89c7ed494f301",
+                                                                                         "tests/test_hf_space_workflow_contract.py":  "edcdcf0f5b00f3f6d84ae5968bb0c67fa11b3281bf1c1b22f1e6321b752d926d",
                                                                                          "tests/test_kernel_portfolio_truth.mjs":  "7751d55081a2946f56bfec888948c4bf5d5880b96092d53458a92b4f2c55478d",
                                                                                          "tests/test_kernel_registry.py":  "6c8d2827f5f1c37ec353655c46f45100f046cb767da39ab45f9cd3b98bc5957b",
                                                                                          "scripts/github_governed_merge.py":  "f385d7d85302e569345e249229eb4ecbcfdde19739131ab3eadea31534afcf98",
@@ -495,13 +495,17 @@
                                                                                                                        "branches: [main]",
                                                                                                                        "concurrency:",
                                                                                                                        "cancel-in-progress: false",
-        "timeout-minutes: 15",
-        "timeout-minutes: 20",
-        "timeout-minutes: 35",
-        "timeout-minutes: 25",
-                                                                                                                       "Record bounded publisher evidence deadline",
+                                                                                                                       "timeout-minutes: 15",
+                                                                                                                       "timeout-minutes: 20",
+                                                                                                                       "timeout-minutes: 35",
+                                                                                                                       "timeout-minutes: 25",
+                                                                                                                       "authorize-exact-governed-merge",
+                                                                                                                       "publish-exact-protected-main",
+                                                                                                                       "measure-and-reauthorize-publication",
+                                                                                                                       "attest-terminal-publication-evidence",
                                                                                                                        "HF_TERMINAL_DEADLINE_EPOCH",
                                                                                                                        "$(($(date +%s) + 900))",
+                                                                                                                       "Record bounded publisher evidence deadline",
                                                                                                                        "Record bounded attestation evidence deadline",
                                                                                                                        "--reserve-seconds 120 --max-seconds 120",
                                                                                                                        "--reserve-seconds 60 --max-seconds 45",
@@ -512,14 +516,22 @@
                                                                                                                        "--only-binary=:all:",
                                                                                                                        "Fetch pinned bounded attestation runtime before mutation",
                                                                                                                        "Fetch pinned bounded artifact runtime before mutation",
+                                                                                                                       "needs.authorize.result == \u0027success\u0027",
+                                                                                                                       "Record bounded publisher evidence deadline",
+                                                                                                                       "Record bounded measurement evidence deadline",
+                                                                                                                       "Record bounded attestation evidence deadline",
                                                                                                                        "Measure public bytes and reauthorize exact main",
-                                                                                                                       "Synthesize canonical success receipt candidate",
+                                                                                                                       "Publish authorized bundle without GitHub or OIDC credentials",
                                                                                                                        "Attest canonical final success receipt bytes",
-                                                                                                                       "uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32",
-                                                                                                                       "subject-path: ${{ runner.temp }}/kernel-terminal-candidate/hf-canonical-success-receipt.json",
+                                                                                                                       "Synthesize canonical success receipt candidate",
+                                                                                                                       "Promote attested receipt and bind metadata envelope",
+                                                                                                                       "Synthesize terminal failure evidence",
+                                                                                                                       "Enforce terminal publication evidence",
                                                                                                                        "Preserve terminal success evidence primary",
                                                                                                                        "--action upload",
                                                                                                                        "Preserve terminal failure evidence retry",
+                                                                                                                       "subject-path: ${{ runner.temp }}/kernel-terminal-candidate/hf-canonical-success-receipt.json",
+                                                                                                                       "uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32",
                                                                                                                        "Validate exact failed-deployment receipt",
                                                                                                                        "id: deployment-failure-receipt",
                                                                                                                        "--deployment-failure-receipt-outcome",
@@ -528,7 +540,7 @@
                                                                                                                        "--deployment-failure-artifact-primary-outcome",
                                                                                                                        "--deployment-failure-artifact-retry-outcome",
                                                                                                                        "Validate exact failed-deployment receipt",
-                                                                                                                       "enforce-terminal","oidc_completed: ${{ steps.oidc-completion.outputs.complete }}","name: preserve-attestation-timeout-evidence","needs.attest.outputs.oidc_completed != 'true'","timeout-minutes: 10","Record bounded timeout-evidence deadline","$(($(date +%s) + 480))","Revalidate canonical candidate after attestation timeout","Synthesize attestation-timeout failure evidence","hf-attestation-timeout-failure.json","Preserve attestation-timeout evidence primary","kernel-attestation-timeout-primary-","Preserve attestation-timeout evidence retry","kernel-attestation-timeout-retry-","Enforce attestation-timeout evidence preservation","--candidate-receipt-outcome \"${{ steps.timeout-candidate.outcome }}\"","--oidc-outcome \"${{ needs.attest.result }}\"",
+                                                                                                                       "enforce-terminal",
                                                                                                                        "actions/attest-build-provenance",
                                                                                                                        "--action upload"
                                                                                                                    ],
@@ -563,17 +575,17 @@
                     "szl-holdings/szl-provctl-live":  {
                                                           "repository_id":  1295941247,
                                                           "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "c307f3e44325f53631bdb09cb332b70f48b96045",
+                                                          "observed_candidate_sha":  "f58882d1120f77a952d009b26bee8e40192df091",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
-                                                                                 ".github/workflows/hf-static-space.yml":  "8aaf0bb3703b8bf937a6f574debe1837a69611b80efdccf1bc3b16754bdee276"
+                                                                                 ".github/workflows/hf-static-space.yml":  "ba09f9916a3114f44c22a54475947e45d3a256bf5fbe1c670b3a015620293359"
                                                                              },
                                                           "secret_execution_files":  {
                                                                                          ".hf-space.json":  "24f23b8e01c6d53f82b387de9041d735007a78f175cf523dcefbca198ba193a4",
                                                                                          "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                          "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
                                                                                          "scripts/hf_static_space.py":  "a474edc74508eb7703709fc63a52897de72312d78ea21987475153bc974c7cdc",
-                                                                                         "tests/test_hf_static_space.py":  "7715942457cf541cfe2aac3a9cfb6f6c43e5f817a1dfb4c63191618b0143ba68"
+                                                                                         "tests/test_hf_static_space.py":  "c83c099462634bf28604c583464073f86d8e0722b133eba1d1a86a341811ec8b"
                                                                                      },
                                                           "mutable_public_assets":  [
                                                                                         "LICENSE",
