@@ -624,14 +624,21 @@ def _workflow_governance_contract(workflow: str) -> None:
     if trigger != expected_trigger:
         raise BoundaryError("publisher workflow trigger is not exact")
     concurrency = _mapping(document.get("concurrency"), "publisher workflow concurrency")
-    if concurrency != {
-        "group": (
-            "hf-static-space-${{ github.repository }}-"
-            "${{ github.event_name == 'pull_request' && format('pr-{0}', "
-            "github.event.pull_request.number) || 'production' }}"
-        ),
-        "cancel-in-progress": False,
-    }:
+    if workflow_name == "hf-space-deploy":
+        expected_concurrency = {
+            "group": "hf-space-deploy-${{ github.repository }}-production",
+            "cancel-in-progress": False,
+        }
+    else:
+        expected_concurrency = {
+            "group": (
+                "hf-static-space-${{ github.repository }}-"
+                "${{ github.event_name == 'pull_request' && format('pr-{0}', "
+                "github.event.pull_request.number) || 'production' }}"
+            ),
+            "cancel-in-progress": False,
+        }
+    if concurrency != expected_concurrency:
         raise BoundaryError("publisher workflow concurrency is not fail-closed")
     if _permissions(document.get("permissions"), "top-level") != STATIC_TOP_PERMISSIONS:
         raise BoundaryError("publisher workflow top-level permissions are not exact")
