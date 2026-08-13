@@ -219,6 +219,9 @@ class BoundaryTests(unittest.TestCase):
         self.pending_targets = sorted(
             name for name, item in self.manifest["targets"].items() if item["state"] == "PENDING"
         )
+        self.active_targets = sorted(
+            name for name, item in self.manifest["targets"].items() if item["state"] == "ACTIVE"
+        )
 
     def test_repository_manifest_is_frozen_until_signed_successor_heads(self) -> None:
         manifest = RB.load_manifest(MANIFEST_PATH)
@@ -274,8 +277,8 @@ class BoundaryTests(unittest.TestCase):
             RB.verify_all_active(manifest, FakeAPI())
         explicit_pending = RB.verify_all_active(self.manifest, FakeAPI(), allow_explicit_pending=True)
         self.assertEqual(explicit_pending["status"], "MANIFEST_INCOMPLETE_PENDING_TARGETS")
-        self.assertEqual(len(explicit_pending["targets"]), 1)
-        self.assertEqual(explicit_pending["targets"][0]["status"], "MANIFEST_TARGET_VERIFIED")
+        self.assertEqual(len(explicit_pending["targets"]), len(self.active_targets))
+        self.assertTrue(all(target["status"] == "MANIFEST_TARGET_VERIFIED" for target in explicit_pending["targets"]))
         self.assertEqual(explicit_pending["pending_targets"], self.pending_targets)
         self.assertFalse(explicit_pending["authorization_complete"])
 
