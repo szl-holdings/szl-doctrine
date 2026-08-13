@@ -160,6 +160,22 @@ def manifest_fixture() -> dict:
         kernel["state"] = "ACTIVE"
         kernel["observed_candidate_sha"] = "f" * 40
         kernel["pending_reason"] = None
+        kernel["workflow_files"] = {
+            ".github/workflows/hf-space-deploy.yml": digest(KERNEL_WORKFLOW.encode()),
+            ".github/workflows/kernel-contracts.yml": digest(KERNEL_WORKFLOW.encode()),
+        }
+        kernel["publisher_contract"]["publisher_workflow"] = ".github/workflows/hf-space-deploy.yml"
+        kernel["publisher_contract"]["required_workflow_markers"] = [
+            "name: hf-space-deploy",
+            "on:",
+            "push:",
+            "branches: [main]",
+            "concurrency:",
+            "cancel-in-progress: false",
+            "authorize-exact-governed-merge",
+            "publish-exact-protected-main",
+            "measure-and-reauthorize-publication",
+        ]
         kernel["publisher_contract"]["identities"][0]["source_repository"] = "szl-holdings/szl-kernels-live"
         kernel["publisher_contract"]["identities"][0]["target"] = "SZLHOLDINGS/szl-kernels-live"
         kernel["secret_execution_files"][".hf-space.json"] = digest(KERNEL_CONFIG)
@@ -171,13 +187,23 @@ def blob_values() -> dict[str, bytes]:
     return {".github/workflows/hf-static-space.yml": WORKFLOW.encode(), ".hf-space.json": CONFIG, "requirements/hf-publisher.lock": LOCK, "requirements/hf-validator.lock": VALIDATOR_LOCK, "scripts/hf_static_space.py": PUBLISHER, "tests/test_hf_static_space.py": TEST_RUNTIME, "LICENSE": b"license", "README.md": b"readme", "index.html": b"<p>public</p>"}
 
 
+def kernel_blob_values() -> dict[str, bytes]:
+    return {
+        ".github/workflows/hf-space-deploy.yml": KERNEL_WORKFLOW.encode(),
+        ".github/workflows/kernel-contracts.yml": KERNEL_WORKFLOW.encode(),
+    }
+
+
 class FakeAPI:
     def __init__(self, values: dict[str, bytes] | None = None, changed: int = 101) -> None:
         values = values or blob_values()
         self.values, self.changed, self.calls = values, changed, []
+        kernel_values = dict(values)
+        kernel_values.pop(".github/workflows/hf-static-space.yml", None)
+        kernel_values.update({".hf-space.json": KERNEL_CONFIG}, **kernel_blob_values())
         self.values_by_repo = {
             REPOSITORY: values,
-            "szl-holdings/szl-kernels-live": dict(values, **{".hf-space.json": KERNEL_CONFIG}),
+            "szl-holdings/szl-kernels-live": kernel_values,
         }
         self.pull_heads, self.pull_bases, self.pull_reads = [HEAD, HEAD, HEAD], [BASE, BASE, BASE], 0
         self.ref_heads = {"heads/gh-readonly-queue/main/pr-1": HEAD, "heads/main": BASE}
@@ -286,20 +312,11 @@ class BoundaryTests(unittest.TestCase):
 
     def test_repository_manifest_activates_exact_signed_successor_heads(self) -> None:
         manifest = RB.load_manifest(MANIFEST_PATH)
-        pending_targets = sorted(
-            name for name, item in manifest["targets"].items() if item["state"] == "PENDING"
+        active_targets = sorted(
+            name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"
         )
         self.assertEqual(
-            {name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
-            set(manifest["targets"]),
-        )
-        kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
-        self.assertEqual(
-            {
-                name: item["observed_candidate_sha"]
-                for name, item in manifest["targets"].items()
-                if item["state"] == "PENDING"
-            },
+            {name: item["observed_candidate_sha"] for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
             {
                 "szl-holdings/energy-attest-holo": "bb994489a1f6ff8121e9c60d43f0554aa61a676f",
                 "szl-holdings/governed-norm-holo": "5072be516d9d3026b70dcde51feec0f40a0cbc5d",
@@ -309,6 +326,11 @@ class BoundaryTests(unittest.TestCase):
                 "szl-holdings/szl-provctl-live": "f58882d1120f77a952d009b26bee8e40192df091",
             },
         )
+        self.assertEqual(
+            set(active_targets),
+            set(manifest["targets"]),
+        )
+        kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
         self.assertIsNotNone(kernel["observed_candidate_sha"])
         for name, item in manifest["targets"].items():
             self.assertEqual(item["state"], "ACTIVE")
