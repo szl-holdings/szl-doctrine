@@ -127,6 +127,9 @@ class FakeAPI:
                     "full_name": repository,
                     "default_branch": "main",
                 }
+        if "/git/commits/" in path:
+            sha = path.rsplit("/", 1)[1]
+            return {"sha": sha, "tree": {"sha": TREE}}
         if path == f"/repos/{REPOSITORY}/pulls/7":
             return self._pull()
         if "/pulls/7/files?" in path:
