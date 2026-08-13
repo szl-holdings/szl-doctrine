@@ -411,7 +411,6 @@
                                                                                                                        "branches: [main]",
                                                                                                                        "concurrency:",
                                                                                                                        "cancel-in-progress: false",
-                                                                                                                       "timeout-minutes: 60",
                                                                                                                        "Record cumulative job budget origin",
                                                                                                                        "HF_TERMINAL_DEADLINE_EPOCH",
                                                                                                                        "$((started_at + 3300))",
