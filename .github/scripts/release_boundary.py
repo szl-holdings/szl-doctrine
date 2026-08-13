@@ -1051,7 +1051,7 @@ def _workflow_governance_contract(workflow: str) -> None:
         "set -euo pipefail",
         'mkdir -p "$RUNNER_TEMP/public-main-home" "$RUNNER_TEMP/public-main-cache" "$RUNNER_TEMP/publication-evidence"',
         'chmod 0700 "$RUNNER_TEMP/public-main-home" "$RUNNER_TEMP/public-main-cache"',
-        '/usr/bin/env -i HOME="$RUNNER_TEMP/public-main-home" HF_HOME="$RUNNER_TEMP/public-main-cache" XDG_CACHE_HOME="$RUNNER_TEMP/public-main-cache" PATH="$RUNNER_TEMP/hf-publisher-venv/bin:/usr/bin:/bin" LANG="C.UTF-8" LC_ALL="C.UTF-8" PYTHONIOENCODING="utf-8" "$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" fresh-main --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/publication-evidence/github-main-freshness.json"',
+        '/usr/bin/env -i HOME="$RUNNER_TEMP/public-main-home" HF_HOME="$RUNNER_TEMP/public-main-cache" XDG_CACHE_HOME="$RUNNER_TEMP/public-main-cache" PATH="$RUNNER_TEMP/hf-publisher-venv/bin:/usr/bin:/bin" LANG="C.UTF-8" LC_ALL="C.UTF-8" PYTHONIOENCODING="utf-8" "$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" fresh-main --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/publication-evidence/github-main-preflight-freshness.json"',
     ]
     if _logical_shell_commands(
         publisher_freshness.get("run"), "publisher freshness"
@@ -1324,6 +1324,134 @@ def _workflow_governance_contract(workflow: str) -> None:
         raise BoundaryError("OIDC attestation does not bind the exact public measurement")
 
 
+def _kernel_workflow_governance_contract(workflow: str) -> None:
+    document = _workflow_document(workflow)
+    if set(document) != {"name", "on", "permissions", "concurrency", "jobs"}:
+        raise BoundaryError("kernel publisher workflow top-level field allowlist is not exact")
+    if document.get("name") != "hf-space-deploy":
+        raise BoundaryError("kernel publisher workflow identity is not exact")
+    if _mapping(document.get("on"), "kernel publisher workflow trigger") != {
+        "push": {"branches": ["main"]}
+    }:
+        raise BoundaryError("kernel publisher workflow trigger is not exact")
+    if _mapping(
+        document.get("concurrency"), "kernel publisher workflow concurrency"
+    ) != {
+        "group": "hf-space-deploy-${{ github.repository }}-production",
+        "cancel-in-progress": False,
+    }:
+        raise BoundaryError("kernel publisher workflow concurrency is not fail-closed")
+    if _permissions(
+        document.get("permissions"), "kernel publisher top-level"
+    ) != STATIC_TOP_PERMISSIONS:
+        raise BoundaryError("kernel publisher top-level permissions are not exact")
+
+    jobs = _mapping(document.get("jobs"), "kernel publisher workflow jobs")
+    expected_job_keys = {
+        "authorize": {
+            "name",
+            "if",
+            "permissions",
+            "runs-on",
+            "timeout-minutes",
+            "outputs",
+            "steps",
+        },
+        "deploy": {
+            "name",
+            "if",
+            "needs",
+            "permissions",
+            "runs-on",
+            "timeout-minutes",
+            "outputs",
+            "steps",
+        },
+        "measure": {
+            "name",
+            "if",
+            "needs",
+            "permissions",
+            "runs-on",
+            "timeout-minutes",
+            "outputs",
+            "steps",
+        },
+        "attest": {
+            "name",
+            "if",
+            "needs",
+            "permissions",
+            "runs-on",
+            "timeout-minutes",
+            "env",
+            "steps",
+        },
+    }
+    if set(jobs) != set(expected_job_keys) or any(
+        not isinstance(job, dict) for job in jobs.values()
+    ):
+        raise BoundaryError("kernel publisher workflow job allowlist is not exact")
+
+    expected_profiles = {
+        "authorize": {
+            "name": "authorize-exact-governed-merge",
+            "if": "github.ref == 'refs/heads/main'",
+            "needs": None,
+            "timeout-minutes": 15,
+            "permissions": STATIC_AUTHORIZATION_PERMISSIONS,
+        },
+        "deploy": {
+            "name": "publish-exact-protected-main",
+            "if": "needs.authorize.result == 'success'",
+            "needs": "authorize",
+            "timeout-minutes": 20,
+            "permissions": STATIC_PUBLISHER_PERMISSIONS,
+        },
+        "measure": {
+            "name": "measure-and-reauthorize-publication",
+            "if": (
+                "always() && needs.authorize.result == 'success' "
+                "&& needs.deploy.result == 'success'"
+            ),
+            "needs": ["authorize", "deploy"],
+            "timeout-minutes": 35,
+            "permissions": STATIC_AUTHORIZATION_PERMISSIONS,
+        },
+        "attest": {
+            "name": "attest-terminal-publication-evidence",
+            "if": "always() && needs.authorize.result == 'success'",
+            "needs": ["authorize", "deploy", "measure"],
+            "timeout-minutes": 25,
+            "permissions": STATIC_ATTESTATION_PERMISSIONS,
+        },
+    }
+    for job_id, job in jobs.items():
+        profile = expected_profiles[job_id]
+        if set(job) != expected_job_keys[job_id]:
+            raise BoundaryError(
+                f"kernel publisher workflow job fields are not exact: {job_id}"
+            )
+        if (
+            job.get("name") != profile["name"]
+            or job.get("if") != profile["if"]
+            or job.get("runs-on") != "ubuntu-latest"
+            or job.get("timeout-minutes") != profile["timeout-minutes"]
+            or (job.get("needs") if "needs" in job else None) != profile["needs"]
+        ):
+            raise BoundaryError(
+                f"kernel publisher workflow job execution profile is not exact: {job_id}"
+            )
+        if _permissions(
+            job.get("permissions"), f"kernel publisher job {job_id}"
+        ) != profile["permissions"]:
+            raise BoundaryError(
+                f"kernel publisher workflow job permissions are not exact: {job_id}"
+            )
+        if not _steps(job, f"kernel publisher job {job_id}"):
+            raise BoundaryError(f"kernel publisher workflow job has no steps: {job_id}")
+
+
 def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -> None:
     contract = entry["publisher_contract"]
     try:
@@ -1339,7 +1467,10 @@ def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -
         raise BoundaryError("publisher workflow retains a legacy privileged governance credential")
     if "secrets: inherit" in workflow:
         raise BoundaryError("publisher workflow expands permissions or inherits secrets")
-    _workflow_governance_contract(workflow)
+    if repository == "szl-holdings/szl-kernels-live":
+        _kernel_workflow_governance_contract(workflow)
+    else:
+        _workflow_governance_contract(workflow)
     if contract["isolated_invocation"] not in workflow:
         raise BoundaryError("publisher invocation is not isolated from repository modules")
     for marker in contract["required_workflow_markers"]:

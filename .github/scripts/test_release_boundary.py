@@ -31,6 +31,67 @@ HEAD, BASE, TREE = "1" * 40, "2" * 40, "3" * 40
 WORKFLOW = (
     HERE.parent / "release-boundary" / "fixtures" / "hf-static-space.yml"
 ).read_text(encoding="utf-8")
+KERNEL_WORKFLOW = """name: hf-space-deploy
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: hf-space-deploy-${{ github.repository }}-production
+  cancel-in-progress: false
+jobs:
+  authorize:
+    name: authorize-exact-governed-merge
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs: {}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+  deploy:
+    name: publish-exact-protected-main
+    if: needs.authorize.result == 'success'
+    needs: authorize
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs: {}
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  measure:
+    name: measure-and-reauthorize-publication
+    if: always() && needs.authorize.result == 'success' && needs.deploy.result == 'success'
+    needs: [authorize, deploy]
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs: {}
+    steps:
+      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+  attest:
+    name: attest-terminal-publication-evidence
+    if: always() && needs.authorize.result == 'success'
+    needs: [authorize, deploy, measure]
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env: {}
+    steps:
+      - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+"""
 
 PUBLISHER = b"""import json
 governed_schema = "szl.github-governed-merge/v3"
@@ -177,33 +238,35 @@ class BoundaryTests(unittest.TestCase):
         self.entry = self.manifest["targets"][REPOSITORY]
         self.env = {"EVENT_REPOSITORY": REPOSITORY, "EVENT_REPOSITORY_ID": str(REPOSITORY_ID), "EVENT_HEAD_SHA": HEAD, "GITHUB_SHA": HEAD}
 
-    def test_repository_manifest_is_frozen_until_signed_successor_heads(self) -> None:
+    def test_repository_manifest_activates_exact_signed_successor_heads(self) -> None:
         manifest = RB.load_manifest(MANIFEST_PATH)
         self.assertEqual(
             {name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
-            set(),
+            set(manifest["targets"]),
         )
         kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
-        self.assertEqual(kernel["state"], "PENDING")
         self.assertEqual(
             {
                 name: item["observed_candidate_sha"]
                 for name, item in manifest["targets"].items()
             },
             {
-                "szl-holdings/energy-attest-holo": None,
-                "szl-holdings/governed-norm-holo": None,
-                "szl-holdings/lambda-gate-holo": None,
-                "szl-holdings/receipt-chain-live": None,
-                "szl-holdings/szl-kernels-live": None,
-                "szl-holdings/szl-provctl-live": None,
+                "szl-holdings/energy-attest-holo": "bb994489a1f6ff8121e9c60d43f0554aa61a676f",
+                "szl-holdings/governed-norm-holo": "5072be516d9d3026b70dcde51feec0f40a0cbc5d",
+                "szl-holdings/lambda-gate-holo": "1617bf6cafe33ba56a3e35f9dc4c61e150ab9919",
+                "szl-holdings/receipt-chain-live": "4569e00d52aa050faa20dd84dccad7bb19098566",
+                "szl-holdings/szl-kernels-live": "58ee0fb964dd2f5dfc7bd9f4f24f0f8772d2d48f",
+                "szl-holdings/szl-provctl-live": "f58882d1120f77a952d009b26bee8e40192df091",
             },
         )
         for name, item in manifest["targets"].items():
-            self.assertEqual(item["state"], "PENDING")
-            self.assertTrue(item["pending_reason"])
-            self.assertEqual(set(item["workflow_files"].values()), {"PENDING"})
-            self.assertEqual(set(item["secret_execution_files"].values()), {"PENDING"})
+            self.assertEqual(item["state"], "ACTIVE")
+            self.assertIsNone(item["pending_reason"])
+            for digest in (
+                list(item["workflow_files"].values())
+                + list(item["secret_execution_files"].values())
+            ):
+                self.assertIsNotNone(re.fullmatch(r"[0-9a-f]{64}", digest))
             markers = set(item["publisher_contract"]["required_workflow_markers"])
             if name != "szl-holdings/szl-kernels-live":
                 self.assertIn("permissions: {}", markers)
@@ -214,7 +277,6 @@ class BoundaryTests(unittest.TestCase):
             self.assertNotIn("QILLQAQ_PRIVATE_KEY", markers)
             self.assertNotIn("permission-administration: read", markers)
             self.assertNotIn("actions/create-github-app-token@", "\n".join(markers))
-        self.assertIn("separately supplied and reviewed v3 kernel publisher receipt", kernel["pending_reason"])
         self.assertEqual(
             set(kernel["workflow_files"]),
             {".github/workflows/hf-space-deploy.yml", ".github/workflows/kernel-contracts.yml"},
@@ -232,27 +294,57 @@ class BoundaryTests(unittest.TestCase):
                 "tests/fixtures/hf-static-window-huggingface-injection.html",
                 "tests/test_github_governed_merge.py",
                 "tests/test_hf_space_bundle.py",
+                "tests/test_hf_space_workflow_contract.py",
                 "tests/test_kernel_portfolio_truth.mjs",
                 "tests/test_kernel_registry.py",
             },
         )
-        self.assertEqual(set(kernel["workflow_files"].values()), {"PENDING"})
-        self.assertEqual(set(kernel["secret_execution_files"].values()), {"PENDING"})
-        with self.assertRaisesRegex(RB.BoundaryError, "no ACTIVE"):
-            RB.verify_all_active(manifest, FakeAPI())
-        explicit_pending = RB.verify_all_active(manifest, FakeAPI(), allow_explicit_pending=True)
-        self.assertEqual(explicit_pending["status"], "MANIFEST_INCOMPLETE_PENDING_TARGETS")
-        self.assertEqual(explicit_pending["targets"], [])
-        self.assertEqual(len(explicit_pending["pending_targets"]), 6)
-        self.assertFalse(explicit_pending["authorization_complete"])
+        kernel_markers = set(kernel["publisher_contract"]["required_workflow_markers"])
+        self.assertIn(
+            "uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32",
+            kernel_markers,
+        )
+        self.assertIn(
+            "subject-path: ${{ runner.temp }}/kernel-terminal-candidate/hf-canonical-success-receipt.json",
+            kernel_markers,
+        )
+        self.assertNotIn("--action attest-build-provenance", kernel_markers)
 
-    def test_kernel_manifest_is_explicitly_fail_closed(self) -> None:
+    def test_kernel_manifest_is_exactly_active(self) -> None:
         kernel = RB.load_manifest(MANIFEST_PATH)["targets"]["szl-holdings/szl-kernels-live"]
-        self.assertEqual(kernel["state"], "PENDING")
-        self.assertIsNone(kernel["observed_candidate_sha"])
-        self.assertTrue(kernel["pending_reason"])
-        self.assertEqual(set(kernel["workflow_files"].values()), {"PENDING"})
-        self.assertEqual(set(kernel["secret_execution_files"].values()), {"PENDING"})
+        self.assertEqual(kernel["state"], "ACTIVE")
+        self.assertEqual(
+            kernel["observed_candidate_sha"],
+            "58ee0fb964dd2f5dfc7bd9f4f24f0f8772d2d48f",
+        )
+        self.assertIsNone(kernel["pending_reason"])
+        for digest in (
+            list(kernel["workflow_files"].values())
+            + list(kernel["secret_execution_files"].values())
+        ):
+            self.assertIsNotNone(re.fullmatch(r"[0-9a-f]{64}", digest))
+
+    def test_kernel_workflow_governance_profile_is_exact(self) -> None:
+        RB._kernel_workflow_governance_contract(KERNEL_WORKFLOW)
+        mutations = (
+            ("name: hf-space-deploy", "name: other", "identity"),
+            ("branches: [main]", "branches: [develop]", "trigger"),
+            ("cancel-in-progress: false", "cancel-in-progress: true", "concurrency"),
+            (
+                "name: publish-exact-protected-main",
+                "name: publish-unreviewed-main",
+                "execution profile",
+            ),
+            ("needs: authorize", "needs: attest", "execution profile"),
+            ("id-token: write", "id-token: read", "permissions"),
+        )
+        for old, new, message in mutations:
+            with self.subTest(old=old), self.assertRaisesRegex(
+                RB.BoundaryError, message
+            ):
+                RB._kernel_workflow_governance_contract(
+                    KERNEL_WORKFLOW.replace(old, new, 1)
+                )
 
     def test_all_active_verification_reports_verified_static_before_pending(self) -> None:
         result = RB.verify_all_active(self.manifest, FakeAPI())
@@ -546,6 +638,14 @@ class BoundaryTests(unittest.TestCase):
             WORKFLOW.replace(
                 '"$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" fresh-main',
                 '"$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" deploy',
+                1,
+            ),
+            "publisher freshness command",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "github-main-preflight-freshness.json",
+                "github-main-freshness.json",
                 1,
             ),
             "publisher freshness command",
