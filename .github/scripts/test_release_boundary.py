@@ -31,70 +31,9 @@ HEAD, BASE, TREE = "1" * 40, "2" * 40, "3" * 40
 WORKFLOW = (
     HERE.parent / "release-boundary" / "fixtures" / "hf-static-space.yml"
 ).read_text(encoding="utf-8")
-KERNEL_WORKFLOW = """name: hf-space-deploy
-on:
-  push:
-    branches: [main]
-permissions:
-  contents: read
-concurrency:
-  group: hf-space-deploy-${{ github.repository }}-production
-  cancel-in-progress: false
-jobs:
-  authorize:
-    name: authorize-exact-governed-merge
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      actions: read
-      checks: read
-      contents: read
-      pull-requests: read
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs: {}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-  deploy:
-    name: publish-exact-protected-main
-    if: needs.authorize.result == 'success'
-    needs: authorize
-    permissions: {}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    outputs: {}
-    steps:
-      - name: Isolated publisher mutation command
-        run: |
-          /usr/bin/env -i
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-  measure:
-    name: measure-and-reauthorize-publication
-    if: always() && needs.authorize.result == 'success' && needs.deploy.result == 'success'
-    needs: [authorize, deploy]
-    permissions:
-      actions: read
-      checks: read
-      contents: read
-      pull-requests: read
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    outputs: {}
-    steps:
-      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-  attest:
-    name: attest-terminal-publication-evidence
-    if: always() && needs.authorize.result == 'success'
-    needs: [authorize, deploy, measure]
-    permissions:
-      attestations: write
-      contents: read
-      id-token: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env: {}
-    steps:
-      - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
-"""
+KERNEL_WORKFLOW = (
+    HERE.parent / "release-boundary" / "fixtures" / "hf-kernel-space.yml"
+).read_text(encoding="utf-8")
 
 PUBLISHER = b"""import json
 governed_schema = "szl.github-governed-merge/v3"
@@ -168,6 +107,10 @@ def manifest_fixture() -> dict:
             ".github/workflows/kernel-contracts.yml": digest(KERNEL_WORKFLOW.encode()),
         }
         kernel["publisher_contract"]["publisher_workflow"] = ".github/workflows/hf-space-deploy.yml"
+        kernel["publisher_contract"]["isolated_invocation"] = (
+            '"$RUNNER_TEMP/hf-publisher-venv/bin/python" -I -P '
+            'scripts/deploy_hf_space.py'
+        )
         kernel["publisher_contract"]["required_workflow_markers"] = [
             "name: hf-space-deploy",
             "on:",
@@ -321,12 +264,12 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(
             {name: item["observed_candidate_sha"] for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
             {
-                "szl-holdings/energy-attest-holo": "bb994489a1f6ff8121e9c60d43f0554aa61a676f",
-                "szl-holdings/governed-norm-holo": "5072be516d9d3026b70dcde51feec0f40a0cbc5d",
-                "szl-holdings/lambda-gate-holo": "1617bf6cafe33ba56a3e35f9dc4c61e150ab9919",
-                "szl-holdings/receipt-chain-live": "4569e00d52aa050faa20dd84dccad7bb19098566",
-                "szl-holdings/szl-kernels-live": "58ee0fb964dd2f5dfc7bd9f4f24f0f8772d2d48f",
-                "szl-holdings/szl-provctl-live": "f58882d1120f77a952d009b26bee8e40192df091",
+                "szl-holdings/energy-attest-holo": "ef7a5ed446665d788625cbc2f4fb7c43a5334ac3",
+                "szl-holdings/governed-norm-holo": "22a8ed08d5630be6f0cb952fe86413b2b2c89e55",
+                "szl-holdings/lambda-gate-holo": "4faea953fec6b72cd482aca9f1ee0d5b6f0d90ae",
+                "szl-holdings/receipt-chain-live": "6852867b9bac92d5ea19412c8b1ff26e33ab3494",
+                "szl-holdings/szl-kernels-live": "07c11e05ef1dbf40810f54a178b5b4b95b988edf",
+                "szl-holdings/szl-provctl-live": "d478f0a97eef4b347a0ff5a7e103bde77feb00b6",
             },
         )
         self.assertEqual(
@@ -399,7 +342,7 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(kernel["state"], "ACTIVE")
         self.assertEqual(
             kernel["observed_candidate_sha"],
-            "58ee0fb964dd2f5dfc7bd9f4f24f0f8772d2d48f",
+            "07c11e05ef1dbf40810f54a178b5b4b95b988edf",
         )
         self.assertIsNone(kernel["pending_reason"])
         for digest in (
@@ -421,6 +364,31 @@ class BoundaryTests(unittest.TestCase):
             ),
             ("needs: authorize", "needs: attest", "execution profile"),
             ("id-token: write", "id-token: read", "permissions"),
+            (
+                "node-version: \"24.19.0\"",
+                "node-version: \"24.18.0\"",
+                "action bindings",
+            ),
+            (
+                '"$input/scripts/deploy_hf_space.py" publish',
+                '"$input/scripts/deploy_hf_space.py" guard',
+                "mutation command",
+            ),
+            (
+                "GITHUB_TOKEN: ${{ github.token }}",
+                "GITHUB_TOKEN: ''",
+                "GitHub token consumption",
+            ),
+            (
+                "HF_TOKEN: ${{ secrets.HF_TOKEN }}",
+                "HF_TOKEN: ''",
+                "HF secret consumption",
+            ),
+            (
+                "needs.attest.outputs.terminal_evidence_completed != 'true'",
+                "needs.attest.result == 'success'",
+                "execution profile",
+            ),
         )
         for old, new, message in mutations:
             with self.subTest(old=old), self.assertRaisesRegex(
@@ -429,6 +397,87 @@ class BoundaryTests(unittest.TestCase):
                 RB._kernel_workflow_governance_contract(
                     KERNEL_WORKFLOW.replace(old, new, 1)
                 )
+
+        inserted = KERNEL_WORKFLOW.replace(
+            "      - name: Record bounded publisher evidence deadline\n",
+            "      - name: Unreviewed publisher hook\n"
+            "        shell: bash\n"
+            "        run: echo unsafe\n"
+            "      - name: Record bounded publisher evidence deadline\n",
+            1,
+        )
+        with self.assertRaisesRegex(RB.BoundaryError, "canonical steps"):
+            RB._kernel_workflow_governance_contract(inserted)
+
+        fail_open_run_step_mutations = (
+            (
+                "      - name: Record terminal evidence completion\n"
+                "        id: terminal-evidence-completion\n"
+                "        if: success()\n",
+                "      - name: Record terminal evidence completion\n"
+                "        id: terminal-evidence-completion\n"
+                "        if: always()\n",
+            ),
+            (
+                '          python -I -P "$input/scripts/deploy_hf_space.py" '
+                "enforce-terminal \\\n",
+                "          echo enforce-terminal \\\n",
+            ),
+            (
+                "      - name: Synthesize canonical success receipt candidate\n"
+                "        id: candidate-receipt\n"
+                "        if: needs.deploy.outputs.publish_outcome == 'success' && "
+                "needs.measure.outputs.measurement_outcome == 'success'\n"
+                "        continue-on-error: true\n"
+                "        env:\n"
+                "          ACTIONS_ID_TOKEN_REQUEST_TOKEN: \"\"\n"
+                "          ACTIONS_ID_TOKEN_REQUEST_URL: \"\"\n"
+                "          ACTIONS_RUNTIME_TOKEN: \"\"\n"
+                "          ACTIONS_RUNTIME_URL: \"\"\n"
+                "          ACTIONS_RESULTS_URL: \"\"\n"
+                "          ACTIONS_CACHE_URL: \"\"\n",
+                "      - name: Synthesize canonical success receipt candidate\n"
+                "        id: candidate-receipt\n"
+                "        if: needs.deploy.outputs.publish_outcome == 'success' && "
+                "needs.measure.outputs.measurement_outcome == 'success'\n"
+                "        continue-on-error: true\n",
+            ),
+        )
+        for old, new in fail_open_run_step_mutations:
+            self.assertIn(old, KERNEL_WORKFLOW)
+            with self.subTest(old=old), self.assertRaisesRegex(
+                RB.BoundaryError, "run-step fields"
+            ):
+                RB._kernel_workflow_governance_contract(
+                    KERNEL_WORKFLOW.replace(old, new, 1)
+                )
+
+        output_drift = KERNEL_WORKFLOW.replace(
+            "      source_sha: ${{ steps.source.outputs.sha }}\n",
+            "      source_sha: ${{ github.sha }}\n",
+            1,
+        )
+        self.assertNotEqual(output_drift, KERNEL_WORKFLOW)
+        with self.assertRaisesRegex(RB.BoundaryError, "exact canonical contract"):
+            RB._kernel_workflow_governance_contract(output_drift)
+
+    def test_static_attestation_failure_artifacts_remain_downloadable(self) -> None:
+        RB._workflow_governance_contract(WORKFLOW)
+        mutations = (
+            (
+                "if: always() && needs.deploy.outputs.publication-artifact-name != ''",
+                "if: needs.deploy.result == 'success'",
+            ),
+            (
+                "if: always() && needs.measure.outputs.measurement-artifact-name != ''",
+                "if: needs.measure.result == 'success'",
+            ),
+        )
+        for old, new in mutations:
+            with self.subTest(old=old), self.assertRaisesRegex(
+                RB.BoundaryError, "step condition"
+            ):
+                RB._workflow_governance_contract(WORKFLOW.replace(old, new, 1))
 
     def test_all_active_verification_reports_verified_static_before_pending(self) -> None:
         result = RB.verify_all_active(self.manifest, FakeAPI())
@@ -874,6 +923,7 @@ class BoundaryTests(unittest.TestCase):
             WORKFLOW.replace(
                 "      - name: Download exact publisher outcome\n"
                 "        id: publisher-evidence-download\n"
+                "        if: always() && needs.deploy.outputs.publication-artifact-name != ''\n"
                 "        continue-on-error: true\n"
                 "        uses:",
                 "      - name: Download exact publisher outcome\n"
@@ -883,7 +933,7 @@ class BoundaryTests(unittest.TestCase):
                 "        uses:",
                 1,
             ),
-            "step fields",
+            "step condition",
         )
 
         document = RB._workflow_document(WORKFLOW)
@@ -905,6 +955,12 @@ class BoundaryTests(unittest.TestCase):
         self.assertNotIn("repository: ${{ github.repository }}", workflow)
         self.assertEqual(
             workflow.count(".github/requirements/release-boundary.lock"), 5
+        )
+        self.assertEqual(
+            workflow.count(
+                ".github/release-boundary/fixtures/hf-kernel-space.yml"
+            ),
+            2,
         )
         self.assertEqual(workflow.count("Install exact structural YAML parser"), 3)
         self.assertEqual(workflow.count("--require-hashes --only-binary=:all:"), 3)
