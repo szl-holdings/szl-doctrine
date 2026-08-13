@@ -76,6 +76,15 @@ REGULAR_MODES = {"100644", "100755"}
 MAX_TREE_ENTRIES = 20000
 MAX_BLOB_BYTES = 4 * 1024 * 1024
 MUTABLE_SUFFIXES = {"", ".html", ".json", ".md", ".txt"}
+KERNEL_WORKFLOW_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "release-boundary"
+    / "fixtures"
+    / "hf-kernel-space.yml"
+)
+KERNEL_WORKFLOW_FIXTURE_SHA256 = (
+    "04bd0c3580acfd882690a20626e6b4f09a3ece2c2dd08f9eb8018861633fd061"
+)
 
 
 class BoundaryError(RuntimeError):
@@ -1518,6 +1527,22 @@ def _workflow_governance_contract(
         raise BoundaryError("OIDC attestation does not bind the exact public measurement")
 
 
+def _canonical_kernel_workflow() -> str:
+    try:
+        raw = KERNEL_WORKFLOW_FIXTURE.read_bytes()
+    except OSError as error:
+        raise BoundaryError("canonical kernel workflow fixture is unavailable") from error
+    normalized = raw.replace(b"\r\n", b"\n")
+    if b"\r" in normalized or hashlib.sha256(normalized).hexdigest() != (
+        KERNEL_WORKFLOW_FIXTURE_SHA256
+    ):
+        raise BoundaryError("canonical kernel workflow fixture digest is not exact")
+    try:
+        return normalized.decode("utf-8")
+    except UnicodeError as error:
+        raise BoundaryError("canonical kernel workflow fixture is not UTF-8") from error
+
+
 def _kernel_workflow_governance_contract(workflow: str) -> None:
     document = _workflow_document(workflow)
     if set(document) != {"name", "on", "permissions", "concurrency", "jobs"}:
@@ -2169,6 +2194,32 @@ def _kernel_workflow_governance_contract(workflow: str) -> None:
             raise BoundaryError(
                 f"kernel publisher workflow job environment is not exact: {job_id}"
             )
+
+    canonical_document = _workflow_document(_canonical_kernel_workflow())
+    canonical_jobs = _mapping(
+        canonical_document.get("jobs"), "canonical kernel publisher workflow jobs"
+    )
+    observed_run_steps = {
+        (job_id, step_identity(step)): step
+        for job_id, job in jobs.items()
+        for step in _steps(job, f"kernel publisher job {job_id}")
+        if "run" in step
+    }
+    canonical_run_steps = {
+        (job_id, step_identity(step)): step
+        for job_id, job in canonical_jobs.items()
+        for step in _steps(job, f"canonical kernel publisher job {job_id}")
+        if "run" in step
+    }
+    if observed_run_steps != canonical_run_steps:
+        raise BoundaryError(
+            "kernel publisher run-step fields, conditions, environment, and commands "
+            "are not exact"
+        )
+    if document != canonical_document:
+        raise BoundaryError(
+            "kernel publisher workflow differs from the exact canonical contract"
+        )
 
 
 def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -> None:

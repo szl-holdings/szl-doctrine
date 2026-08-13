@@ -409,6 +409,58 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(RB.BoundaryError, "canonical steps"):
             RB._kernel_workflow_governance_contract(inserted)
 
+        fail_open_run_step_mutations = (
+            (
+                "      - name: Record terminal evidence completion\n"
+                "        id: terminal-evidence-completion\n"
+                "        if: success()\n",
+                "      - name: Record terminal evidence completion\n"
+                "        id: terminal-evidence-completion\n"
+                "        if: always()\n",
+            ),
+            (
+                '          python -I -P "$input/scripts/deploy_hf_space.py" '
+                "enforce-terminal \\\n",
+                "          echo enforce-terminal \\\n",
+            ),
+            (
+                "      - name: Synthesize canonical success receipt candidate\n"
+                "        id: candidate-receipt\n"
+                "        if: needs.deploy.outputs.publish_outcome == 'success' && "
+                "needs.measure.outputs.measurement_outcome == 'success'\n"
+                "        continue-on-error: true\n"
+                "        env:\n"
+                "          ACTIONS_ID_TOKEN_REQUEST_TOKEN: \"\"\n"
+                "          ACTIONS_ID_TOKEN_REQUEST_URL: \"\"\n"
+                "          ACTIONS_RUNTIME_TOKEN: \"\"\n"
+                "          ACTIONS_RUNTIME_URL: \"\"\n"
+                "          ACTIONS_RESULTS_URL: \"\"\n"
+                "          ACTIONS_CACHE_URL: \"\"\n",
+                "      - name: Synthesize canonical success receipt candidate\n"
+                "        id: candidate-receipt\n"
+                "        if: needs.deploy.outputs.publish_outcome == 'success' && "
+                "needs.measure.outputs.measurement_outcome == 'success'\n"
+                "        continue-on-error: true\n",
+            ),
+        )
+        for old, new in fail_open_run_step_mutations:
+            self.assertIn(old, KERNEL_WORKFLOW)
+            with self.subTest(old=old), self.assertRaisesRegex(
+                RB.BoundaryError, "run-step fields"
+            ):
+                RB._kernel_workflow_governance_contract(
+                    KERNEL_WORKFLOW.replace(old, new, 1)
+                )
+
+        output_drift = KERNEL_WORKFLOW.replace(
+            "      source_sha: ${{ steps.source.outputs.sha }}\n",
+            "      source_sha: ${{ github.sha }}\n",
+            1,
+        )
+        self.assertNotEqual(output_drift, KERNEL_WORKFLOW)
+        with self.assertRaisesRegex(RB.BoundaryError, "exact canonical contract"):
+            RB._kernel_workflow_governance_contract(output_drift)
+
     def test_static_attestation_failure_artifacts_remain_downloadable(self) -> None:
         RB._workflow_governance_contract(WORKFLOW)
         mutations = (
@@ -903,6 +955,12 @@ class BoundaryTests(unittest.TestCase):
         self.assertNotIn("repository: ${{ github.repository }}", workflow)
         self.assertEqual(
             workflow.count(".github/requirements/release-boundary.lock"), 5
+        )
+        self.assertEqual(
+            workflow.count(
+                ".github/release-boundary/fixtures/hf-kernel-space.yml"
+            ),
+            2,
         )
         self.assertEqual(workflow.count("Install exact structural YAML parser"), 3)
         self.assertEqual(workflow.count("--require-hashes --only-binary=:all:"), 3)
