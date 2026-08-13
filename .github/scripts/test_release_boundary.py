@@ -181,10 +181,12 @@ class BoundaryTests(unittest.TestCase):
         manifest = RB.load_manifest(MANIFEST_PATH)
         self.assertEqual(
             {name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
-            set(),
+            {"szl-holdings/szl-kernels-live"},
         )
         kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
-        self.assertEqual(kernel["state"], "PENDING")
+        self.assertEqual(kernel["state"], "ACTIVE")
+        self.assertIsNotNone(kernel["observed_candidate_sha"])
+        self.assertFalse(kernel["pending_reason"])
         self.assertEqual(
             {
                 name: item["observed_candidate_sha"]
@@ -195,15 +197,30 @@ class BoundaryTests(unittest.TestCase):
                 "szl-holdings/governed-norm-holo": None,
                 "szl-holdings/lambda-gate-holo": None,
                 "szl-holdings/receipt-chain-live": None,
-                "szl-holdings/szl-kernels-live": None,
+                "szl-holdings/szl-kernels-live": kernel["observed_candidate_sha"],
                 "szl-holdings/szl-provctl-live": None,
             },
         )
         for name, item in manifest["targets"].items():
-            self.assertEqual(item["state"], "PENDING")
-            self.assertTrue(item["pending_reason"])
-            self.assertEqual(set(item["workflow_files"].values()), {"PENDING"})
-            self.assertEqual(set(item["secret_execution_files"].values()), {"PENDING"})
+            if name == "szl-holdings/szl-kernels-live":
+                self.assertEqual(item["state"], "ACTIVE")
+                self.assertIsNotNone(item["observed_candidate_sha"])
+                self.assertFalse(item["pending_reason"])
+                self.assertEqual(set(item["workflow_files"]), {
+                    ".github/workflows/hf-space-deploy.yml",
+                    ".github/workflows/kernel-contracts.yml",
+                })
+                self.assertTrue(
+                    all(re.fullmatch(r"[0-9a-f]{64}", value) for value in item["workflow_files"].values())
+                )
+                self.assertTrue(
+                    all(re.fullmatch(r"[0-9a-f]{64}", value) for value in item["secret_execution_files"].values())
+                )
+            else:
+                self.assertEqual(item["state"], "PENDING")
+                self.assertTrue(item["pending_reason"])
+                self.assertEqual(set(item["workflow_files"].values()), {"PENDING"})
+                self.assertEqual(set(item["secret_execution_files"].values()), {"PENDING"})
             markers = set(item["publisher_contract"]["required_workflow_markers"])
             if name != "szl-holdings/szl-kernels-live":
                 self.assertIn("permissions: {}", markers)
@@ -214,7 +231,6 @@ class BoundaryTests(unittest.TestCase):
             self.assertNotIn("QILLQAQ_PRIVATE_KEY", markers)
             self.assertNotIn("permission-administration: read", markers)
             self.assertNotIn("actions/create-github-app-token@", "\n".join(markers))
-        self.assertIn("separately supplied and reviewed v3 kernel publisher receipt", kernel["pending_reason"])
         self.assertEqual(
             set(kernel["workflow_files"]),
             {".github/workflows/hf-space-deploy.yml", ".github/workflows/kernel-contracts.yml"},
@@ -236,23 +252,22 @@ class BoundaryTests(unittest.TestCase):
                 "tests/test_kernel_registry.py",
             },
         )
-        self.assertEqual(set(kernel["workflow_files"].values()), {"PENDING"})
-        self.assertEqual(set(kernel["secret_execution_files"].values()), {"PENDING"})
         with self.assertRaisesRegex(RB.BoundaryError, "no ACTIVE"):
             RB.verify_all_active(manifest, FakeAPI())
         explicit_pending = RB.verify_all_active(manifest, FakeAPI(), allow_explicit_pending=True)
         self.assertEqual(explicit_pending["status"], "MANIFEST_INCOMPLETE_PENDING_TARGETS")
-        self.assertEqual(explicit_pending["targets"], [])
-        self.assertEqual(len(explicit_pending["pending_targets"]), 6)
+        self.assertEqual(len(explicit_pending["targets"]), 1)
+        self.assertEqual(explicit_pending["targets"][0]["status"], "MANIFEST_TARGET_VERIFIED")
+        self.assertEqual(len(explicit_pending["pending_targets"]), 5)
         self.assertFalse(explicit_pending["authorization_complete"])
 
     def test_kernel_manifest_is_explicitly_fail_closed(self) -> None:
         kernel = RB.load_manifest(MANIFEST_PATH)["targets"]["szl-holdings/szl-kernels-live"]
-        self.assertEqual(kernel["state"], "PENDING")
-        self.assertIsNone(kernel["observed_candidate_sha"])
-        self.assertTrue(kernel["pending_reason"])
-        self.assertEqual(set(kernel["workflow_files"].values()), {"PENDING"})
-        self.assertEqual(set(kernel["secret_execution_files"].values()), {"PENDING"})
+        self.assertEqual(kernel["state"], "ACTIVE")
+        self.assertIsNotNone(kernel["observed_candidate_sha"])
+        self.assertFalse(kernel["pending_reason"])
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", value) for value in kernel["workflow_files"].values()))
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", value) for value in kernel["secret_execution_files"].values()))
 
     def test_all_active_verification_reports_verified_static_before_pending(self) -> None:
         result = RB.verify_all_active(self.manifest, FakeAPI())
