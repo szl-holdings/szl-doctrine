@@ -91,7 +91,17 @@ def manifest_fixture() -> dict:
         value["publisher_contract"]["identities"][0]["source_repository"] = repository
         value["publisher_contract"]["identities"][0]["target"] = repository.replace("szl-holdings/", "SZLHOLDINGS/")
         targets[repository] = value
+    kernel_release = {}
+    manifest = RB.load_manifest(MANIFEST_PATH)
+    if "szl-holdings/szl-kernels-live" in manifest["targets"]:
+        kernel_release = copy.deepcopy(manifest["targets"]["szl-holdings/szl-kernels-live"])
+        kernel_release["state"] = "ACTIVE"
+        kernel_release["pending_reason"] = None
+        if kernel_release.get("observed_candidate_sha") is None:
+            kernel_release["observed_candidate_sha"] = "f" * 40
     targets[REPOSITORY] = entry
+    if kernel_release:
+        targets["szl-holdings/szl-kernels-live"] = kernel_release
     return {"schema": RB.SCHEMA, "source_repository": RB.SOURCE_REPOSITORY, "targets": targets}
 
 
