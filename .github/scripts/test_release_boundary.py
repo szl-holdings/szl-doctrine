@@ -130,6 +130,11 @@ class FakeAPI:
         if "/git/commits/" in path:
             sha = path.rsplit("/", 1)[1]
             return {"sha": sha, "tree": {"sha": TREE}}
+        if "/git/trees/" in path:
+            _, sha_fragment = path.split("/git/trees/", 1)
+            sha = sha_fragment.split("?", 1)[0]
+            rows = [{"path": name, "mode": "100644", "type": "blob", "sha": f"{index:040x}", "size": len(value)} for index, (name, value) in enumerate(self.values.items(), 10)]
+            return {"sha": sha, "truncated": False, "tree": rows + self.tree_extra}
         if path == f"/repos/{REPOSITORY}/pulls/7":
             return self._pull()
         if "/pulls/7/files?" in path:
