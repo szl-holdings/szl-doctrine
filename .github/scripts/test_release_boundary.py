@@ -88,9 +88,27 @@ jobs:
       id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env: {}
+    outputs:
+      oidc_completed: ${{ steps.oidc-completion.outputs.complete }}
+    env:
+      GITHUB_TOKEN: ""
+      GH_TOKEN: ""
+      HF_TOKEN: ""
     steps:
       - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+  attest-timeout-fallback:
+    name: preserve-attestation-timeout-evidence
+    if: always() && needs.authorize.result == 'success' && needs.attest.outputs.oidc_completed != 'true'
+    needs: [authorize, deploy, measure, attest]
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITHUB_TOKEN: ""
+      GH_TOKEN: ""
+      HF_TOKEN: ""
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
 """
 
 PUBLISHER = b"""import json
@@ -110,6 +128,11 @@ run_attempt = check_suite_id = 1
 publisher_executable_rebind = True
 OIDC_ATTESTED_DEPLOYMENT = WORKFLOW_STAGE_FAILURE = receipt_minted = False
 """
+KERNEL_PUBLISHER = (
+    b'SOURCE_REPO = "szl-holdings/szl-kernels-live"\n'
+    b'HF_REPO = "SZLHOLDINGS/szl-kernels-live"\n'
+    + PUBLISHER
+)
 LOCK = b"huggingface_hub==1.2.3 --hash=sha256:" + b"a" * 64 + b"\n"
 for index in range(22):
     LOCK += f"package-{index}==1.0 --hash=sha256:{index:064x}\n".encode()
@@ -160,9 +183,34 @@ def manifest_fixture() -> dict:
         kernel["state"] = "ACTIVE"
         kernel["observed_candidate_sha"] = "f" * 40
         kernel["pending_reason"] = None
-        kernel["publisher_contract"]["identities"][0]["source_repository"] = "szl-holdings/szl-kernels-live"
-        kernel["publisher_contract"]["identities"][0]["target"] = "SZLHOLDINGS/szl-kernels-live"
-        kernel["secret_execution_files"][".hf-space.json"] = digest(KERNEL_CONFIG)
+        kernel["workflow_files"] = {
+            ".github/workflows/hf-space-deploy.yml": digest(KERNEL_WORKFLOW.encode())
+        }
+        kernel["secret_execution_files"] = {
+            "requirements/hf-publisher.lock": digest(LOCK),
+            "scripts/deploy_hf_space.py": digest(KERNEL_PUBLISHER),
+        }
+        kernel["publisher_contract"] = {
+            "publisher_workflow": ".github/workflows/hf-space-deploy.yml",
+            "publisher_script": "scripts/deploy_hf_space.py",
+            "dependency_lock": "requirements/hf-publisher.lock",
+            "protected_execution_roots": ["scripts"],
+            "isolated_invocation": "actions/setup-python@",
+            "identities": [
+                {
+                    "kind": "python_constants",
+                    "path": "scripts/deploy_hf_space.py",
+                    "source_repository": "szl-holdings/szl-kernels-live",
+                    "target": "SZLHOLDINGS/szl-kernels-live",
+                }
+            ],
+            "required_workflow_markers": [
+                "name: hf-space-deploy",
+                "attest-timeout-fallback:",
+                "preserve-attestation-timeout-evidence",
+            ],
+            "required_publisher_markers": ["SOURCE_REPO", "HF_REPO"],
+        }
         targets["szl-holdings/szl-kernels-live"] = kernel
     return {"schema": RB.SCHEMA, "source_repository": RB.SOURCE_REPOSITORY, "targets": targets}
 
@@ -177,7 +225,14 @@ class FakeAPI:
         self.values, self.changed, self.calls = values, changed, []
         self.values_by_repo = {
             REPOSITORY: values,
-            "szl-holdings/szl-kernels-live": dict(values, **{".hf-space.json": KERNEL_CONFIG}),
+            "szl-holdings/szl-kernels-live": {
+                ".github/workflows/hf-space-deploy.yml": KERNEL_WORKFLOW.encode(),
+                "requirements/hf-publisher.lock": LOCK,
+                "scripts/deploy_hf_space.py": KERNEL_PUBLISHER,
+                "LICENSE": b"license",
+                "README.md": b"readme",
+                "index.html": b"<p>public</p>",
+            },
         }
         self.pull_heads, self.pull_bases, self.pull_reads = [HEAD, HEAD, HEAD], [BASE, BASE, BASE], 0
         self.ref_heads = {"heads/gh-readonly-queue/main/pr-1": HEAD, "heads/main": BASE}
@@ -298,15 +353,15 @@ class BoundaryTests(unittest.TestCase):
             {
                 name: item["observed_candidate_sha"]
                 for name, item in manifest["targets"].items()
-                if item["state"] == "PENDING"
+                if item["state"] == "ACTIVE"
             },
             {
-                "szl-holdings/energy-attest-holo": "bb994489a1f6ff8121e9c60d43f0554aa61a676f",
-                "szl-holdings/governed-norm-holo": "5072be516d9d3026b70dcde51feec0f40a0cbc5d",
-                "szl-holdings/lambda-gate-holo": "1617bf6cafe33ba56a3e35f9dc4c61e150ab9919",
-                "szl-holdings/receipt-chain-live": "4569e00d52aa050faa20dd84dccad7bb19098566",
-                "szl-holdings/szl-kernels-live": "58ee0fb964dd2f5dfc7bd9f4f24f0f8772d2d48f",
-                "szl-holdings/szl-provctl-live": "f58882d1120f77a952d009b26bee8e40192df091",
+                "szl-holdings/energy-attest-holo": "3709eba7e46c69d4879adca1c192cec599bdcb20",
+                "szl-holdings/governed-norm-holo": "c113a178d0b34445e1d09ac2567a75dba6c26db6",
+                "szl-holdings/lambda-gate-holo": "ca3cdb7451056e8b39229e3d1eb40f5be475a294",
+                "szl-holdings/receipt-chain-live": "9c12c78d8d91c769b76caf18353120b21e1e5158",
+                "szl-holdings/szl-kernels-live": "38d7304c4f5b555346e5ab61b2f936075a8f4630",
+                "szl-holdings/szl-provctl-live": "c307f3e44325f53631bdb09cb332b70f48b96045",
             },
         )
         self.assertIsNotNone(kernel["observed_candidate_sha"])
@@ -366,7 +421,7 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(kernel["state"], "ACTIVE")
         self.assertEqual(
             kernel["observed_candidate_sha"],
-            "58ee0fb964dd2f5dfc7bd9f4f24f0f8772d2d48f",
+            "38d7304c4f5b555346e5ab61b2f936075a8f4630",
         )
         self.assertIsNone(kernel["pending_reason"])
         for digest in (
@@ -388,6 +443,11 @@ class BoundaryTests(unittest.TestCase):
             ),
             ("needs: authorize", "needs: attest", "execution profile"),
             ("id-token: write", "id-token: read", "permissions"),
+            (
+                "needs.attest.outputs.oidc_completed != 'true'",
+                "needs.attest.result == 'success'",
+                "execution profile",
+            ),
         )
         for old, new, message in mutations:
             with self.subTest(old=old), self.assertRaisesRegex(
@@ -396,6 +456,26 @@ class BoundaryTests(unittest.TestCase):
                 RB._kernel_workflow_governance_contract(
                     KERNEL_WORKFLOW.replace(old, new, 1)
                 )
+
+    def test_static_attestation_artifact_channel_guards_are_exact(self) -> None:
+        RB._workflow_governance_contract(WORKFLOW)
+        mutations = (
+            (
+                "if: needs.deploy.result == 'success' && needs.deploy.outputs.publication-artifact-name != ''",
+                "if: always()",
+                "step condition.*Download exact publisher outcome",
+            ),
+            (
+                "if: needs.measure.result == 'success' && needs.measure.outputs.measurement-artifact-name != ''",
+                "if: always()",
+                "step condition.*Download exact public measurement",
+            ),
+        )
+        for old, new, message in mutations:
+            with self.subTest(old=old), self.assertRaisesRegex(
+                RB.BoundaryError, message
+            ):
+                RB._workflow_governance_contract(WORKFLOW.replace(old, new, 1))
 
     def test_all_active_verification_reports_verified_static_before_pending(self) -> None:
         result = RB.verify_all_active(self.manifest, FakeAPI())
@@ -839,18 +919,11 @@ class BoundaryTests(unittest.TestCase):
         )
         rejected(
             WORKFLOW.replace(
-                "      - name: Download exact publisher outcome\n"
-                "        id: publisher-evidence-download\n"
-                "        continue-on-error: true\n"
-                "        uses:",
-                "      - name: Download exact publisher outcome\n"
-                "        id: publisher-evidence-download\n"
-                "        if: always()\n"
-                "        continue-on-error: true\n"
-                "        uses:",
+                "        if: needs.deploy.result == 'success' && needs.deploy.outputs.publication-artifact-name != ''\n",
+                "        if: always()\n",
                 1,
             ),
-            "step fields",
+            "step condition.*Download exact publisher outcome",
         )
 
         document = RB._workflow_document(WORKFLOW)

@@ -997,7 +997,7 @@ def _workflow_governance_contract(workflow: str) -> None:
     allow("measure", ["Require exact public measurement"], "if", "run")
     allow("attest", ["Harden runner"], "id", "continue-on-error", "uses", "env", "with")
     allow("attest", ["Checkout exact protected-main evidence synthesizer", "Set up exact Python"], "id", "if", "continue-on-error", "uses", "env", "with")
-    allow("attest", ["Download exact publisher outcome", "Download exact public measurement"], "id", "continue-on-error", "uses", "env", "with")
+    allow("attest", ["Download exact publisher outcome", "Download exact public measurement"], "id", "if", "continue-on-error", "uses", "env", "with")
     allow("attest", ["Attest canonical exact-revision measurement with GitHub OIDC"], "id", "if", "continue-on-error", "uses", "with")
     allow("attest", ["Synthesize final receipt or exact workflow-stage failure"], "id", "if", "continue-on-error", "env", "run")
     allow("attest", ["Synthesize terminal artifact-upload failure"], "if", "env", "run")
@@ -1060,6 +1060,8 @@ def _workflow_governance_contract(workflow: str) -> None:
         ("measure", "Measure public bytes and reauthorize current main without HF credentials"): "steps.measurement-environment.outcome == 'success'",
         ("attest", "Checkout exact protected-main evidence synthesizer"): "steps.attestation-hardening.outcome == 'success'",
         ("attest", "Set up exact Python"): "steps.attestation-checkout.outcome == 'success'",
+        ("attest", "Download exact publisher outcome"): "needs.deploy.result == 'success' && needs.deploy.outputs.publication-artifact-name != ''",
+        ("attest", "Download exact public measurement"): "needs.measure.result == 'success' && needs.measure.outputs.measurement-artifact-name != ''",
         ("attest", "Attest canonical exact-revision measurement with GitHub OIDC"): "steps.attestation-hardening.outcome == 'success' && steps.attestation-checkout.outcome == 'success' && steps.attestation-environment.outcome == 'success' && needs.measure.outputs.measurement-hardening-outcome == 'success' && needs.measure.outputs.measurement-input-outcome == 'success' && needs.measure.outputs.measurement-rebind-outcome == 'success' && needs.measure.outputs.measurement-publisher-evidence-outcome == 'success' && needs.measure.outputs.measurement-environment-outcome == 'success' && needs.measure.outputs.measurement-outcome == 'success' && needs.measure.outputs.measurement-evidence-outcome == 'success' && steps.publisher-evidence-download.outcome == 'success' && steps.measurement-evidence-download.outcome == 'success'",
         ("attest", "Synthesize final receipt or exact workflow-stage failure"): "always()",
         ("attest", "Upload terminal governed evidence"): "always()",
@@ -1476,6 +1478,23 @@ def _workflow_governance_contract(workflow: str) -> None:
         if observed_outcomes != expected_outcomes:
             raise BoundaryError(f"terminal outcome synthesis is not exact: {step_name}")
 
+    publisher_evidence_download = _named_step(
+        attest, "Download exact publisher outcome"
+    )
+    if publisher_evidence_download.get("if") != (
+        "needs.deploy.result == 'success' && "
+        "needs.deploy.outputs.publication-artifact-name != ''"
+    ):
+        raise BoundaryError("publisher evidence artifact channel guard is not exact")
+    measurement_evidence_download = _named_step(
+        attest, "Download exact public measurement"
+    )
+    if measurement_evidence_download.get("if") != (
+        "needs.measure.result == 'success' && "
+        "needs.measure.outputs.measurement-artifact-name != ''"
+    ):
+        raise BoundaryError("measurement evidence artifact channel guard is not exact")
+
     oidc = _named_step(
         attest, "Attest canonical exact-revision measurement with GitHub OIDC"
     )
@@ -1545,6 +1564,17 @@ def _kernel_workflow_governance_contract(workflow: str) -> None:
             "permissions",
             "runs-on",
             "timeout-minutes",
+            "outputs",
+            "env",
+            "steps",
+        },
+        "attest-timeout-fallback": {
+            "name",
+            "if",
+            "needs",
+            "permissions",
+            "runs-on",
+            "timeout-minutes",
             "env",
             "steps",
         },
@@ -1586,6 +1616,16 @@ def _kernel_workflow_governance_contract(workflow: str) -> None:
             "timeout-minutes": 25,
             "permissions": STATIC_ATTESTATION_PERMISSIONS,
         },
+        "attest-timeout-fallback": {
+            "name": "preserve-attestation-timeout-evidence",
+            "if": (
+                "always() && needs.authorize.result == 'success' "
+                "&& needs.attest.outputs.oidc_completed != 'true'"
+            ),
+            "needs": ["authorize", "deploy", "measure", "attest"],
+            "timeout-minutes": 10,
+            "permissions": STATIC_PUBLISHER_PERMISSIONS,
+        },
     }
     for job_id, job in jobs.items():
         profile = expected_profiles[job_id]
@@ -1611,6 +1651,25 @@ def _kernel_workflow_governance_contract(workflow: str) -> None:
             )
         if not _steps(job, f"kernel publisher job {job_id}"):
             raise BoundaryError(f"kernel publisher workflow job has no steps: {job_id}")
+
+    if _mapping(
+        jobs["attest"].get("outputs"), "kernel attestation outputs"
+    ) != {
+        "oidc_completed": "${{ steps.oidc-completion.outputs.complete }}"
+    }:
+        raise BoundaryError("kernel attestation completion output is not exact")
+    expected_blank_environment = {
+        "GITHUB_TOKEN": "",
+        "GH_TOKEN": "",
+        "HF_TOKEN": "",
+    }
+    for job_id in ("attest", "attest-timeout-fallback"):
+        if _mapping(
+            jobs[job_id].get("env"), f"kernel publisher job {job_id} environment"
+        ) != expected_blank_environment:
+            raise BoundaryError(
+                f"kernel publisher workflow job environment is not exact: {job_id}"
+            )
 
 
 def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -> None:
