@@ -210,7 +210,9 @@ def _repository_identity(api: GitHubAPI, repository: str, expected_id: int) -> N
         raise BoundaryError("event repository identity or default branch is not exact")
 
 
-def _pull_binding(value: object, repository: str, repository_id: int, number: int) -> tuple[str, int]:
+def _pull_binding(
+    value: object, repository: str, repository_id: int, number: int
+) -> tuple[str, str, int]:
     if not isinstance(value, dict) or value.get("number") != number or value.get("state") != "open":
         raise BoundaryError("pull request metadata is unavailable or not open")
     head, base = value.get("head"), value.get("base")
@@ -221,11 +223,11 @@ def _pull_binding(value: object, repository: str, repository_id: int, number: in
     if base.get("ref") != "main":
         raise BoundaryError("pull request base is not the exact default branch")
     head_sha = _exact_sha(head.get("sha"), "pull request head")
-    _exact_sha(base.get("sha"), "pull request base")
+    base_sha = _exact_sha(base.get("sha"), "pull request base")
     changed = value.get("changed_files")
     if not isinstance(changed, int) or isinstance(changed, bool) or changed < 0 or changed > 3000:
         raise BoundaryError("pull request changed-file count is unavailable or unbounded")
-    return head_sha, changed
+    return head_sha, base_sha, changed
 
 
 def _pull_files(api: GitHubAPI, repository: str, number: int, declared: int) -> list[str]:
@@ -268,15 +270,22 @@ def _event_binding(api: GitHubAPI, event: dict, repository: str, repository_id: 
         if not isinstance(pull, dict) or not isinstance(number, int):
             raise BoundaryError("pull request event payload is malformed")
         event_head = _exact_sha((pull.get("head") or {}).get("sha"), "event pull request head")
+        event_base = _exact_sha((pull.get("base") or {}).get("sha"), "event pull request base")
         first = api.get(f"/repos/{repository}/pulls/{number}")
-        head_sha, changed = _pull_binding(first, repository, repository_id, number)
-        if head_sha != event_head:
-            raise BoundaryError("event and authoritative pull request heads differ")
+        head_sha, base_sha, changed = _pull_binding(
+            first, repository, repository_id, number
+        )
+        if head_sha != event_head or base_sha != event_base:
+            raise BoundaryError("event and authoritative pull request head/base differ")
         _pull_files(api, repository, number, changed)
         second = api.get(f"/repos/{repository}/pulls/{number}")
-        if _pull_binding(second, repository, repository_id, number) != (head_sha, changed):
-            raise BoundaryError("pull request head/count drifted during pagination")
-        return head_sha, ("pull_request", number, head_sha, changed)
+        if _pull_binding(second, repository, repository_id, number) != (
+            head_sha,
+            base_sha,
+            changed,
+        ):
+            raise BoundaryError("pull request head/base/count drifted during pagination")
+        return head_sha, ("pull_request", number, head_sha, base_sha, changed)
     group = event.get("merge_group")
     if not isinstance(group, dict):
         raise BoundaryError("only pull_request and merge_group events are supported")
@@ -588,66 +597,8 @@ def _walk_scalars(value: object, path: tuple[object, ...] = ()):
         yield path, value
 
 
-HARDENED_STATIC_WORKFLOW_SHA256 = (
-    "dba23a071a38d1c098e3fa0542a7f234cb655c1e749dd8fcc24ce3f9d6f36a54"
-)
-HARDENED_STATIC_SHELL_CONTRACT_SHA256 = (
-    "11c6d14a729640a27770f9adfbad0ba38b4cc085dd996b1fc23ca6a22d0171ad"
-)
-LEGACY_STATIC_SHELL_CONTRACT_SHA256 = {
-    "4120d1a9d147bcf85ea9920dd884ef9c440f583163759beaa1ad7a6afbf82254": "08564ae2b8f8189431c606f31132589cd4ee994b5cd9c27a33b3467d8c0e2cd0",
-    "cbb90b7cf33d83b02ef7837c583852f01b1af1d9c165a54dbcbbaeb2349ec95e": "802d7628504781fdd07de8128b578937578c7bddba85a3e4cb42ce838b6eb96a",
-}
-
-
-def _workflow_shell_contract_sha256(document: dict) -> str:
-    rows: list[dict[str, object]] = []
-    jobs = _mapping(document.get("jobs"), "publisher workflow jobs")
-    for job_id, value in jobs.items():
-        job = _mapping(value, f"publisher workflow job {job_id}")
-        for step in _steps(job, f"publisher workflow job {job_id}"):
-            if "run" in step:
-                rows.append(
-                    {
-                        "job": job_id,
-                        "name": step.get("name"),
-                        "env": step.get("env", {}),
-                        "run": step["run"],
-                    }
-                )
-    payload = (
-        json.dumps(
-            rows,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n"
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
-
-
 def _workflow_governance_contract(workflow: str) -> None:
     document = _workflow_document(workflow)
-    workflow_sha256 = hashlib.sha256(workflow.encode("utf-8")).hexdigest()
-    shell_contract_sha256 = _workflow_shell_contract_sha256(document)
-    if workflow_sha256 == HARDENED_STATIC_WORKFLOW_SHA256:
-        if shell_contract_sha256 != HARDENED_STATIC_SHELL_CONTRACT_SHA256:
-            raise BoundaryError(
-                "hardened publisher workflow shell step bodies and environments are not exact"
-            )
-        return
-    expected_shell_contract_sha256 = LEGACY_STATIC_SHELL_CONTRACT_SHA256.get(
-        workflow_sha256
-    )
-    if expected_shell_contract_sha256 is None:
-        raise BoundaryError(
-            f"publisher workflow shell step bodies are not covered: {workflow_sha256}"
-        )
-    if shell_contract_sha256 != expected_shell_contract_sha256:
-        raise BoundaryError(
-            "publisher workflow shell step bodies and environments are not exact"
-        )
     if set(document) != {"name", "on", "permissions", "concurrency", "jobs"}:
         raise BoundaryError("publisher workflow top-level field allowlist is not exact")
     if document.get("name") != "Governed static Space release":
@@ -761,56 +712,40 @@ def _workflow_governance_contract(workflow: str) -> None:
     if attest.get("needs") != ["authorize", "deploy", "measure"]:
         raise BoundaryError("attestation job dependency chain is wrong")
 
-    authorize_outputs = {
-        "authorization-outcome": "${{ steps.authorization.outcome }}",
-        "authorization-evidence-outcome": "${{ steps.authorization-evidence.outcome }}",
-        "bundle-outcome": "${{ steps.bundle.outcome }}",
-        "publisher-input-outcome": "${{ steps.publisher-input.outcome }}",
-        "publisher-digests-outcome": "${{ steps.publisher-digests.outcome }}",
-        "publisher-input-evidence-outcome": "${{ steps.publisher-input-evidence.outcome }}",
-        "publisher_script_sha256": "${{ steps.publisher-digests.outputs.publisher_script_sha256 }}",
-        "publisher_lock_sha256": "${{ steps.publisher-digests.outputs.publisher_lock_sha256 }}",
-        "publisher_config_sha256": "${{ steps.publisher-digests.outputs.publisher_config_sha256 }}",
-        "authorization_sha256": "${{ steps.publisher-digests.outputs.authorization_sha256 }}",
-        "bundle_manifest_sha256": "${{ steps.publisher-digests.outputs.bundle_manifest_sha256 }}",
-    }
-    deploy_outputs = {
-        "publisher-input-outcome": "${{ steps.publisher-input.outcome }}",
-        "publisher-rebind-outcome": "${{ steps.publisher-rebind.outcome }}",
-        "publisher-environment-outcome": "${{ steps.publisher-environment.outcome }}",
-        "publisher-freshness-outcome": "${{ steps.publisher-freshness.outcome }}",
-        "publish-outcome": "${{ steps.publish.outcome }}",
-        "publisher-evidence-outcome": "${{ steps.publisher-evidence.outcome }}",
-    }
-    measure_outputs = {
-        "measurement-hardening-outcome": "${{ steps.measurement-hardening.outcome }}",
-        "measurement-input-outcome": "${{ steps.measurement-input.outcome }}",
-        "measurement-rebind-outcome": "${{ steps.measurement-rebind.outcome }}",
-        "measurement-publisher-evidence-outcome": "${{ steps.measurement-publisher-evidence.outcome }}",
-        "measurement-environment-outcome": "${{ steps.measurement-environment.outcome }}",
-        "measurement-outcome": "${{ steps.measurement.outcome }}",
-        "measurement-evidence-outcome": "${{ steps.measurement-evidence.outcome }}",
-    }
-    authorize_has_artifact_attempt = "artifact-run-attempt" in _mapping(
-        authorize.get("outputs"), "authorize outputs"
-    )
-    if authorize_has_artifact_attempt:
-        authorize_outputs["artifact-run-attempt"] = "${{ github.run_attempt }}"
-    deploy_has_artifact_attempt = "artifact-run-attempt" in _mapping(
-        deploy.get("outputs"), "deploy outputs"
-    )
-    if deploy_has_artifact_attempt:
-        deploy_outputs["artifact-run-attempt"] = "${{ github.run_attempt }}"
-    measure_has_artifact_attempt = "artifact-run-attempt" in _mapping(
-        measure.get("outputs"), "measure outputs"
-    )
-    if measure_has_artifact_attempt:
-        measure_outputs["artifact-run-attempt"] = "${{ github.run_attempt }}"
-
     expected_outputs = {
-        "authorize": authorize_outputs,
-        "deploy": deploy_outputs,
-        "measure": measure_outputs,
+        "authorize": {
+            "authorization-outcome": "${{ steps.authorization.outcome }}",
+            "authorization-evidence-outcome": "${{ steps.authorization-evidence.outcome }}",
+            "bundle-outcome": "${{ steps.bundle.outcome }}",
+            "publisher-input-outcome": "${{ steps.publisher-input.outcome }}",
+            "publisher-digests-outcome": "${{ steps.publisher-digests.outcome }}",
+            "publisher-input-evidence-outcome": "${{ steps.publisher-input-evidence.outcome }}",
+            "publisher-input-artifact-name": "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}",
+            "publisher_script_sha256": "${{ steps.publisher-digests.outputs.publisher_script_sha256 }}",
+            "publisher_lock_sha256": "${{ steps.publisher-digests.outputs.publisher_lock_sha256 }}",
+            "publisher_config_sha256": "${{ steps.publisher-digests.outputs.publisher_config_sha256 }}",
+            "authorization_sha256": "${{ steps.publisher-digests.outputs.authorization_sha256 }}",
+            "bundle_manifest_sha256": "${{ steps.publisher-digests.outputs.bundle_manifest_sha256 }}",
+        },
+        "deploy": {
+            "publisher-input-outcome": "${{ steps.publisher-input.outcome }}",
+            "publisher-rebind-outcome": "${{ steps.publisher-rebind.outcome }}",
+            "publisher-environment-outcome": "${{ steps.publisher-environment.outcome }}",
+            "publish-outcome": "${{ steps.publish.outcome }}",
+            "publisher-evidence-outcome": "${{ steps.publisher-evidence.outcome }}",
+            "publisher-freshness-outcome": "${{ steps.publisher-freshness.outcome }}",
+            "publication-artifact-name": "hf-static-space-publication-${{ github.sha }}-${{ github.run_attempt }}",
+        },
+        "measure": {
+            "measurement-hardening-outcome": "${{ steps.measurement-hardening.outcome }}",
+            "measurement-input-outcome": "${{ steps.measurement-input.outcome }}",
+            "measurement-rebind-outcome": "${{ steps.measurement-rebind.outcome }}",
+            "measurement-publisher-evidence-outcome": "${{ steps.measurement-publisher-evidence.outcome }}",
+            "measurement-environment-outcome": "${{ steps.measurement-environment.outcome }}",
+            "measurement-outcome": "${{ steps.measurement.outcome }}",
+            "measurement-evidence-outcome": "${{ steps.measurement-evidence.outcome }}",
+            "measurement-artifact-name": "hf-static-space-measurement-${{ github.sha }}-${{ github.run_attempt }}",
+        },
     }
     for job_id, expected in expected_outputs.items():
         if _mapping(jobs[job_id].get("outputs"), f"{job_id} outputs") != expected:
@@ -890,28 +825,24 @@ def _workflow_governance_contract(workflow: str) -> None:
     allow("authorize", ["Require exact governed authorization"], "if", "run")
     allow("deploy", ["Harden runner"], "uses", "with")
     allow("deploy", ["Download exact authorized publisher input"], "id", "continue-on-error", "uses", "with")
-    allow("deploy", ["Rebind five publisher inputs before interpretation or credentials", "Install pinned Hugging Face client without repository credentials", "Publish exact bundle with only the Hugging Face credential"], "id", "if", "continue-on-error", "env", "run")
-    allow("deploy", ["Reconfirm public main at exact source revision without credentials"], "id", "if", "continue-on-error", "env", "run")
-    allow("deploy", ["Classify public-main freshness failure before mutation"], "if", "run")
+    allow("deploy", ["Rebind five publisher inputs before interpretation or credentials", "Install pinned Hugging Face client without repository credentials", "Reconfirm public main at exact source revision without credentials", "Publish exact bundle with only the Hugging Face credential"], "id", "if", "continue-on-error", "env", "run")
     allow("deploy", ["Set up exact Python"], "if", "uses", "with")
-    allow("deploy", ["Classify publisher-environment failure before credential materialization", "Require exact publisher success"], "if", "run")
+    allow("deploy", ["Classify publisher-environment failure before credential materialization", "Classify public-main freshness failure before mutation", "Require exact publisher success"], "if", "run")
     allow("deploy", ["Upload publisher outcome before any OIDC privilege exists"], "id", "if", "continue-on-error", "uses", "with")
     allow("measure", ["Harden runner"], "id", "continue-on-error", "uses", "with")
-    allow("measure", ["Download exact authorized publisher input"], "id", "if", "continue-on-error", "uses", "with")
-    allow("measure", ["Rebind five measurement inputs before interpretation or credentials"], "id", "if", "continue-on-error", "env", "run")
-    allow("measure", ["Download exact publisher outcome"], "id", "if", "continue-on-error", "uses", "with")
-    allow("measure", ["Set up exact Python"], "id", "if", "continue-on-error", "uses", "with")
-    allow("measure", ["Measure public bytes and reauthorize current main without HF credentials"], "id", "if", "continue-on-error", "env", "run")
+    allow("measure", ["Download exact authorized publisher input", "Download exact publisher outcome", "Set up exact Python"], "id", "if", "continue-on-error", "uses", "with")
+    allow("measure", ["Rebind five measurement inputs before interpretation or credentials", "Measure public bytes and reauthorize current main without HF credentials"], "id", "if", "continue-on-error", "env", "run")
     allow("measure", ["Upload exact public measurement before OIDC"], "id", "if", "continue-on-error", "uses", "with")
     allow("measure", ["Require exact public measurement"], "if", "run")
-    allow("attest", ["Harden runner"], "continue-on-error", "env", "id", "uses", "with")
-    allow("attest", ["Checkout exact protected-main evidence synthesizer", "Set up exact Python"], "continue-on-error", "env", "id", "if", "uses", "with")
-    allow("attest", ["Download exact publisher outcome", "Download exact public measurement"], "continue-on-error", "env", "id", "uses", "with")
+    allow("attest", ["Harden runner"], "id", "continue-on-error", "uses", "env", "with")
+    allow("attest", ["Checkout exact protected-main evidence synthesizer", "Set up exact Python"], "id", "if", "continue-on-error", "uses", "env", "with")
+    allow("attest", ["Download exact publisher outcome", "Download exact public measurement"], "id", "continue-on-error", "uses", "env", "with")
     allow("attest", ["Attest canonical exact-revision measurement with GitHub OIDC"], "id", "if", "continue-on-error", "uses", "with")
-    allow("attest", ["Synthesize final receipt or exact workflow-stage failure"], "continue-on-error", "env", "id", "if", "run")
-    allow("attest", ["Synthesize terminal artifact-upload failure", "Require terminal governed success"], "env", "if", "run")
-    allow("attest", ["Upload terminal governed evidence"], "continue-on-error", "env", "id", "if", "uses", "with")
-    allow("attest", ["Upload terminal failure evidence"], "continue-on-error", "env", "if", "uses", "with")
+    allow("attest", ["Synthesize final receipt or exact workflow-stage failure"], "id", "if", "continue-on-error", "env", "run")
+    allow("attest", ["Synthesize terminal artifact-upload failure"], "if", "env", "run")
+    allow("attest", ["Upload terminal governed evidence"], "id", "if", "continue-on-error", "uses", "env", "with")
+    allow("attest", ["Upload terminal failure evidence"], "if", "continue-on-error", "uses", "env", "with")
+    allow("attest", ["Require terminal governed success"], "if", "env", "run")
 
     expected_ids = {
         ("authorize", "Authorize the exact governed merge without HF credentials"): "authorization",
@@ -926,21 +857,21 @@ def _workflow_governance_contract(workflow: str) -> None:
         ("deploy", "Reconfirm public main at exact source revision without credentials"): "publisher-freshness",
         ("deploy", "Publish exact bundle with only the Hugging Face credential"): "publish",
         ("deploy", "Upload publisher outcome before any OIDC privilege exists"): "publisher-evidence",
+        ("measure", "Measure public bytes and reauthorize current main without HF credentials"): "measurement",
+        ("measure", "Upload exact public measurement before OIDC"): "measurement-evidence",
         ("measure", "Harden runner"): "measurement-hardening",
         ("measure", "Download exact authorized publisher input"): "measurement-input",
         ("measure", "Rebind five measurement inputs before interpretation or credentials"): "measurement-rebind",
         ("measure", "Download exact publisher outcome"): "measurement-publisher-evidence",
         ("measure", "Set up exact Python"): "measurement-environment",
-        ("measure", "Measure public bytes and reauthorize current main without HF credentials"): "measurement",
-        ("measure", "Upload exact public measurement before OIDC"): "measurement-evidence",
-        ("attest", "Download exact publisher outcome"): "publisher-evidence-download",
-        ("attest", "Download exact public measurement"): "measurement-evidence-download",
-        ("attest", "Attest canonical exact-revision measurement with GitHub OIDC"): "oidc",
         ("attest", "Harden runner"): "attestation-hardening",
         ("attest", "Checkout exact protected-main evidence synthesizer"): "attestation-checkout",
         ("attest", "Set up exact Python"): "attestation-environment",
-        ("attest", "Synthesize final receipt or exact workflow-stage failure"): "workflow-outcome",
+        ("attest", "Download exact publisher outcome"): "publisher-evidence-download",
+        ("attest", "Download exact public measurement"): "measurement-evidence-download",
+        ("attest", "Attest canonical exact-revision measurement with GitHub OIDC"): "oidc",
         ("attest", "Upload terminal governed evidence"): "terminal-evidence",
+        ("attest", "Synthesize final receipt or exact workflow-stage failure"): "workflow-outcome",
     }
     expected_ifs = {
         ("validate", "Validate exact-head pull-request body evidence"): "github.event_name == 'pull_request'",
@@ -950,24 +881,24 @@ def _workflow_governance_contract(workflow: str) -> None:
         ("authorize", "Upload exact publisher input"): "steps.publisher-input.outcome == 'success' && steps.publisher-digests.outcome == 'success'",
         ("authorize", "Upload governed-merge authorization evidence"): "always()",
         ("authorize", "Require exact governed authorization"): "always()",
-        ("attest", "Checkout exact protected-main evidence synthesizer"): "steps.attestation-hardening.outcome == 'success'",
-        ("attest", "Set up exact Python"): "steps.attestation-checkout.outcome == 'success'",
         ("deploy", "Rebind five publisher inputs before interpretation or credentials"): "steps.publisher-input.outcome == 'success'",
-        ("deploy", "Reconfirm public main at exact source revision without credentials"): "steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome == 'success'",
         ("deploy", "Set up exact Python"): "steps.publisher-rebind.outcome == 'success'",
         ("deploy", "Install pinned Hugging Face client without repository credentials"): "steps.publisher-rebind.outcome == 'success'",
         ("deploy", "Classify publisher-environment failure before credential materialization"): "always() && steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome != 'success'",
+        ("deploy", "Reconfirm public main at exact source revision without credentials"): "steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome == 'success'",
         ("deploy", "Classify public-main freshness failure before mutation"): "always() && steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome == 'success' && steps.publisher-freshness.outcome != 'success'",
         ("deploy", "Publish exact bundle with only the Hugging Face credential"): "steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome == 'success' && steps.publisher-freshness.outcome == 'success'",
         ("deploy", "Upload publisher outcome before any OIDC privilege exists"): "always()",
         ("deploy", "Require exact publisher success"): "always()",
+        ("measure", "Upload exact public measurement before OIDC"): "always()",
+        ("measure", "Require exact public measurement"): "always()",
         ("measure", "Download exact authorized publisher input"): "steps.measurement-hardening.outcome == 'success'",
         ("measure", "Rebind five measurement inputs before interpretation or credentials"): "steps.measurement-input.outcome == 'success'",
         ("measure", "Download exact publisher outcome"): "steps.measurement-rebind.outcome == 'success'",
         ("measure", "Set up exact Python"): "steps.measurement-publisher-evidence.outcome == 'success'",
         ("measure", "Measure public bytes and reauthorize current main without HF credentials"): "steps.measurement-environment.outcome == 'success'",
-        ("measure", "Upload exact public measurement before OIDC"): "always()",
-        ("measure", "Require exact public measurement"): "always()",
+        ("attest", "Checkout exact protected-main evidence synthesizer"): "steps.attestation-hardening.outcome == 'success'",
+        ("attest", "Set up exact Python"): "steps.attestation-checkout.outcome == 'success'",
         ("attest", "Attest canonical exact-revision measurement with GitHub OIDC"): "steps.attestation-hardening.outcome == 'success' && steps.attestation-checkout.outcome == 'success' && steps.attestation-environment.outcome == 'success' && needs.measure.outputs.measurement-hardening-outcome == 'success' && needs.measure.outputs.measurement-input-outcome == 'success' && needs.measure.outputs.measurement-rebind-outcome == 'success' && needs.measure.outputs.measurement-publisher-evidence-outcome == 'success' && needs.measure.outputs.measurement-environment-outcome == 'success' && needs.measure.outputs.measurement-outcome == 'success' && needs.measure.outputs.measurement-evidence-outcome == 'success' && steps.publisher-evidence-download.outcome == 'success' && steps.measurement-evidence-download.outcome == 'success'",
         ("attest", "Synthesize final receipt or exact workflow-stage failure"): "always()",
         ("attest", "Upload terminal governed evidence"): "always()",
@@ -981,7 +912,7 @@ def _workflow_governance_contract(workflow: str) -> None:
         steps = _steps(job, f"job {job_id}")
         names = [step.get("name") for step in steps]
         if names != canonical_steps[job_id]:
-            raise BoundaryError(f"publisher workflow step sequence is not exact: {job_id}")
+            raise BoundaryError(f"publisher workflow canonical steps are not exact: {job_id}")
         for step in steps:
             key = (job_id, step["name"])
             if frozenset(step) != step_keys[key]:
@@ -1004,31 +935,22 @@ def _workflow_governance_contract(workflow: str) -> None:
         ("authorize", "Harden runner"): (HARDEN_RUNNER, {"egress-policy": "audit"}),
         ("authorize", "Checkout exact protected-main event"): (CHECKOUT, {"ref": "${{ github.sha }}", "persist-credentials": False, "fetch-depth": 1}),
         ("authorize", "Set up exact Python"): (SETUP_PYTHON, {"python-version": "3.12.13"}),
-        ("authorize", "Upload exact publisher input"): (
-            UPLOAD_ARTIFACT,
-            {
-                "name": "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}",
-                "path": "${{ runner.temp }}/publisher-input",
-                "if-no-files-found": "error",
-                "include-hidden-files": True,
-                **({"retention-days": 30} if authorize_has_artifact_attempt else {"retention-days": 1}),
-            },
-        ),
+        ("authorize", "Upload exact publisher input"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/publisher-input", "if-no-files-found": "error", "include-hidden-files": True, "retention-days": 1}),
         ("authorize", "Upload governed-merge authorization evidence"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-authorization-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/governed-merge.json\n${{ runner.temp }}/governed-merge-failure.json\n", "if-no-files-found": "error", "retention-days": 90}),
         ("deploy", "Harden runner"): (HARDEN_RUNNER, {"egress-policy": "audit"}),
-        ("deploy", "Download exact authorized publisher input"): (DOWNLOAD_ARTIFACT, {"name": "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}" if not deploy_has_artifact_attempt else "hf-static-space-publisher-input-${{ github.sha }}-${{ needs.authorize.outputs.artifact-run-attempt }}", "path": "${{ runner.temp }}/publisher-input"}),
+        ("deploy", "Download exact authorized publisher input"): (DOWNLOAD_ARTIFACT, {"name": "${{ needs.authorize.outputs.publisher-input-artifact-name }}", "path": "${{ runner.temp }}/publisher-input"}),
         ("deploy", "Set up exact Python"): (SETUP_PYTHON, {"python-version": "3.12.13"}),
         ("deploy", "Upload publisher outcome before any OIDC privilege exists"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-publication-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/publication-evidence", "if-no-files-found": "error", "retention-days": 90}),
         ("measure", "Harden runner"): (HARDEN_RUNNER, {"egress-policy": "audit"}),
-        ("measure", "Download exact authorized publisher input"): (DOWNLOAD_ARTIFACT, {"name": "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}" if not authorize_has_artifact_attempt else "hf-static-space-publisher-input-${{ github.sha }}-${{ needs.authorize.outputs.artifact-run-attempt }}", "path": "${{ runner.temp }}/publisher-input"}),
-        ("measure", "Download exact publisher outcome"): (DOWNLOAD_ARTIFACT, {"name": "hf-static-space-publication-${{ github.sha }}-${{ github.run_attempt }}" if not deploy_has_artifact_attempt else "hf-static-space-publication-${{ github.sha }}-${{ needs.deploy.outputs.artifact-run-attempt }}", "path": "${{ runner.temp }}/publication-evidence"}),
+        ("measure", "Download exact authorized publisher input"): (DOWNLOAD_ARTIFACT, {"name": "${{ needs.authorize.outputs.publisher-input-artifact-name }}", "path": "${{ runner.temp }}/publisher-input"}),
+        ("measure", "Download exact publisher outcome"): (DOWNLOAD_ARTIFACT, {"name": "${{ needs.deploy.outputs.publication-artifact-name }}", "path": "${{ runner.temp }}/publication-evidence"}),
         ("measure", "Set up exact Python"): (SETUP_PYTHON, {"python-version": "3.12.13"}),
         ("measure", "Upload exact public measurement before OIDC"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-measurement-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/measurement-evidence", "if-no-files-found": "error", "retention-days": 90}),
         ("attest", "Harden runner"): (HARDEN_RUNNER, {"egress-policy": "audit"}),
         ("attest", "Checkout exact protected-main evidence synthesizer"): (CHECKOUT, {"ref": "${{ github.sha }}", "persist-credentials": False, "fetch-depth": 1}),
         ("attest", "Set up exact Python"): (SETUP_PYTHON, {"python-version": "3.12.13"}),
-        ("attest", "Download exact publisher outcome"): (DOWNLOAD_ARTIFACT, {"name": "hf-static-space-publication-${{ github.sha }}-${{ github.run_attempt }}" if not deploy_has_artifact_attempt else "hf-static-space-publication-${{ github.sha }}-${{ needs.deploy.outputs.artifact-run-attempt }}", "path": "${{ runner.temp }}/publication-evidence"}),
-        ("attest", "Download exact public measurement"): (DOWNLOAD_ARTIFACT, {"name": "hf-static-space-measurement-${{ github.sha }}-${{ github.run_attempt }}" if not measure_has_artifact_attempt else "hf-static-space-measurement-${{ github.sha }}-${{ needs.measure.outputs.artifact-run-attempt }}", "path": "${{ runner.temp }}/measurement-evidence"}),
+        ("attest", "Download exact publisher outcome"): (DOWNLOAD_ARTIFACT, {"name": "${{ needs.deploy.outputs.publication-artifact-name }}", "path": "${{ runner.temp }}/publication-evidence"}),
+        ("attest", "Download exact public measurement"): (DOWNLOAD_ARTIFACT, {"name": "${{ needs.measure.outputs.measurement-artifact-name }}", "path": "${{ runner.temp }}/measurement-evidence"}),
         ("attest", "Attest canonical exact-revision measurement with GitHub OIDC"): (ATTEST_PROVENANCE, {"subject-path": "${{ runner.temp }}/measurement-evidence/hf-live-attestation.json"}),
         ("attest", "Upload terminal governed evidence"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-terminal-evidence-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/publication-evidence\n${{ runner.temp }}/measurement-evidence\n${{ runner.temp }}/terminal-evidence\n", "if-no-files-found": "error", "retention-days": 90}),
         ("attest", "Upload terminal failure evidence"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-terminal-upload-failure-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/terminal-evidence/hf-workflow-stage-failure.json", "if-no-files-found": "error", "retention-days": 90}),
@@ -1046,6 +968,41 @@ def _workflow_governance_contract(workflow: str) -> None:
         raise BoundaryError("publisher workflow decoded action inventory differs from source spelling")
     if any(value.startswith("./") or PINNED_USES.fullmatch(value) is None for value in structured_uses):
         raise BoundaryError("publisher workflow contains an unpinned, local, or reusable action")
+
+    # Evaluate global credential-expression isolation before exact step-shape
+    # checks so dynamic or whole-context expressions fail at the governing
+    # boundary instead of producing a narrower command diagnostic.
+    secret_expression = re.compile(r"(?i)\bsecrets\b")
+    secret_values = [
+        value
+        for _path, value in _walk_scalars(document)
+        if isinstance(value, str) and secret_expression.search(value)
+    ]
+    if secret_values != [HF_SECRET]:
+        raise BoundaryError("HF secret consumption is not isolated to one exact mutation step")
+
+    github_token_expression = re.compile(r"(?i)\bgithub\s*\.\s*token\b")
+    github_bracket_expression = re.compile(r"(?i)\bgithub\s*\[")
+    github_whole_context = re.compile(
+        r"(?i)\b(?:tojson|fromjson)\s*\(\s*github\s*\)"
+    )
+    for path, value in _walk_scalars(document):
+        if path and path[-1] == "HF_TOKEN" and value not in {"", HF_SECRET}:
+            raise BoundaryError("HF_TOKEN is materialized outside the exact secret boundary")
+        if path and path[-1] == "secrets":
+            raise BoundaryError("publisher workflow inherits or passes a secrets mapping")
+        if isinstance(value, str) and (
+            github_bracket_expression.search(value)
+            or github_whole_context.search(value)
+            or (
+                github_token_expression.search(value)
+                and value != NATIVE_GOVERNANCE_TOKEN
+            )
+        ):
+            raise BoundaryError("GitHub token consumption is not one exact direct expression")
+    for _path, value in _walk_scalars(deploy):
+        if value == NATIVE_GOVERNANCE_TOKEN:
+            raise BoundaryError("publisher job contains a GitHub repository credential")
 
     guard = _named_step(
         authorize, "Authorize the exact governed merge without HF credentials"
@@ -1081,6 +1038,36 @@ def _workflow_governance_contract(workflow: str) -> None:
     ):
         raise BoundaryError("authorization command is not exact and mandatory")
 
+    publisher_freshness = _named_step(
+        deploy, "Reconfirm public main at exact source revision without credentials"
+    )
+    if publisher_freshness.get("env") != {
+        "GITHUB_TOKEN": "",
+        "GH_TOKEN": "",
+        "HF_TOKEN": "",
+    }:
+        raise BoundaryError("publisher freshness credential boundary is not exact")
+    expected_publisher_freshness = [
+        "set -euo pipefail",
+        'mkdir -p "$RUNNER_TEMP/public-main-home" "$RUNNER_TEMP/public-main-cache" "$RUNNER_TEMP/publication-evidence"',
+        'chmod 0700 "$RUNNER_TEMP/public-main-home" "$RUNNER_TEMP/public-main-cache"',
+        '/usr/bin/env -i HOME="$RUNNER_TEMP/public-main-home" HF_HOME="$RUNNER_TEMP/public-main-cache" XDG_CACHE_HOME="$RUNNER_TEMP/public-main-cache" PATH="$RUNNER_TEMP/hf-publisher-venv/bin:/usr/bin:/bin" LANG="C.UTF-8" LC_ALL="C.UTF-8" PYTHONIOENCODING="utf-8" "$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" fresh-main --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/publication-evidence/github-main-freshness.json"',
+    ]
+    if _logical_shell_commands(
+        publisher_freshness.get("run"), "publisher freshness"
+    ) != expected_publisher_freshness:
+        raise BoundaryError("publisher freshness command is not exact and mandatory")
+    freshness_failure = _named_step(
+        deploy, "Classify public-main freshness failure before mutation"
+    )
+    if _logical_shell_commands(
+        freshness_failure.get("run"), "publisher freshness failure"
+    ) != [
+        "set -euo pipefail",
+        '"$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" stage-failure --source-sha "$SOURCE_SHA" --stage publisher_freshness --output "$RUNNER_TEMP/publication-evidence/hf-workflow-stage-failure.json"',
+    ]:
+        raise BoundaryError("publisher freshness failure command is not exact and mandatory")
+
     mutation = _named_step(
         deploy, "Publish exact bundle with only the Hugging Face credential"
     )
@@ -1097,7 +1084,7 @@ def _workflow_governance_contract(workflow: str) -> None:
         "HOME=$RUNNER_TEMP/hf-publisher-home",
         "HF_HOME=$RUNNER_TEMP/hf-publisher-cache",
         "XDG_CACHE_HOME=$RUNNER_TEMP/hf-publisher-cache",
-        "PATH=$PUBLISHER_VENV/bin:/usr/bin:/bin",
+        "PATH=$RUNNER_TEMP/hf-publisher-venv/bin:/usr/bin:/bin",
         "LANG=C.UTF-8",
         "LC_ALL=C.UTF-8",
         "PYTHONIOENCODING=utf-8",
@@ -1116,15 +1103,33 @@ def _workflow_governance_contract(workflow: str) -> None:
         "$RUNNER_TEMP/publication-evidence/hf-deploy-result.json",
         "--failure-output",
         "$RUNNER_TEMP/publication-evidence/hf-publication-failure.json",
+        "--freshness-output",
+        "$RUNNER_TEMP/publication-evidence/github-main-freshness.json",
     ]
     if (
-        mutation_commands[:1] != ["set -euo pipefail"]
+        mutation_commands[:3] != [
+            "set -euo pipefail",
+            'mkdir -p "$RUNNER_TEMP/hf-publisher-home" "$RUNNER_TEMP/hf-publisher-cache"',
+            'chmod 0700 "$RUNNER_TEMP/hf-publisher-home" "$RUNNER_TEMP/hf-publisher-cache"',
+        ]
         or len(mutation_commands) != 4
-        or mutation_commands[1] != 'mkdir -p "$RUNNER_TEMP/hf-publisher-home" "$RUNNER_TEMP/hf-publisher-cache"'
-        or mutation_commands[2] != 'chmod 0700 "$RUNNER_TEMP/hf-publisher-home" "$RUNNER_TEMP/hf-publisher-cache"'
         or _command_tokens(mutation_commands[3], "publisher mutation") != expected_mutation
     ):
         raise BoundaryError("publisher mutation command is not exact and mandatory")
+
+    publisher_success = _named_step(deploy, "Require exact publisher success")
+    if _logical_shell_commands(
+        publisher_success.get("run"), "publisher success"
+    ) != [
+        "set -euo pipefail",
+        'test "${{ steps.publisher-input.outcome }}" = "success"',
+        'test "${{ steps.publisher-rebind.outcome }}" = "success"',
+        'test "${{ steps.publisher-environment.outcome }}" = "success"',
+        'test "${{ steps.publisher-freshness.outcome }}" = "success"',
+        'test "${{ steps.publish.outcome }}" = "success"',
+        'test "${{ steps.publisher-evidence.outcome }}" = "success"',
+    ]:
+        raise BoundaryError("publisher success command is not exact and mandatory")
 
     measurement = _named_step(
         measure, "Measure public bytes and reauthorize current main without HF credentials"
@@ -1161,33 +1166,28 @@ def _workflow_governance_contract(workflow: str) -> None:
         "$RUNNER_TEMP/measurement-evidence/hf-publication-partial.json",
     ]
     if (
-        measurement_commands[:1] != ["set -euo pipefail"]
+        measurement_commands[:2] != [
+            "set -euo pipefail",
+            'mkdir -p "$RUNNER_TEMP/measurement-evidence"',
+        ]
         or len(measurement_commands) != 3
-        or measurement_commands[1] != 'mkdir -p "$RUNNER_TEMP/measurement-evidence"'
         or _command_tokens(measurement_commands[2], "measurement step")
         != expected_measurement
     ):
         raise BoundaryError("measurement command is not exact and mandatory")
 
-    secret_expression = re.compile(
-        r"\bsecrets\s*(?:\.\s*[A-Za-z_][A-Za-z0-9_]*"
-        r"|\[\s*(?:'[^']+'|\"[^\"]+\")\s*\])"
-    )
-    secret_values = [
-        value
-        for _path, value in _walk_scalars(document)
-        if isinstance(value, str) and secret_expression.search(value)
-    ]
-    if secret_values != [HF_SECRET]:
-        raise BoundaryError("HF secret consumption is not isolated to one exact mutation step")
-    for path, value in _walk_scalars(document):
-        if path and path[-1] == "HF_TOKEN" and value not in {"", HF_SECRET}:
-            raise BoundaryError("HF_TOKEN is materialized outside the exact secret boundary")
-        if path and path[-1] == "secrets":
-            raise BoundaryError("publisher workflow inherits or passes a secrets mapping")
-    for _path, value in _walk_scalars(deploy):
-        if value == NATIVE_GOVERNANCE_TOKEN:
-            raise BoundaryError("publisher job contains a GitHub repository credential")
+    oidc_environment = {
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "",
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "",
+    }
+    for step in _steps(attest, "attestation job"):
+        if step.get("name") == "Attest canonical exact-revision measurement with GitHub OIDC":
+            if "env" in step:
+                raise BoundaryError("OIDC attestation step environment is not exact")
+            continue
+        environment = _mapping(step.get("env"), f"attestation step {step.get('name')} environment")
+        if any(environment.get(key) != value for key, value in oidc_environment.items()):
+            raise BoundaryError("non-attestation step retains ambient GitHub OIDC")
 
     _require_artifact_step(
         authorize,
@@ -1198,7 +1198,7 @@ def _workflow_governance_contract(workflow: str) -> None:
             "path": "${{ runner.temp }}/publisher-input",
             "if-no-files-found": "error",
             "include-hidden-files": True,
-            **({"retention-days": 30} if authorize_has_artifact_attempt else {"retention-days": 1}),
+            "retention-days": 1,
         },
     )
     _require_artifact_step(
@@ -1206,9 +1206,7 @@ def _workflow_governance_contract(workflow: str) -> None:
         "Download exact authorized publisher input",
         DOWNLOAD_ARTIFACT,
         {
-            "name": "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}"
-            if not authorize_has_artifact_attempt
-            else "hf-static-space-publisher-input-${{ github.sha }}-${{ needs.authorize.outputs.artifact-run-attempt }}",
+            "name": "${{ needs.authorize.outputs.publisher-input-artifact-name }}",
             "path": "${{ runner.temp }}/publisher-input",
         },
     )
@@ -1228,9 +1226,7 @@ def _workflow_governance_contract(workflow: str) -> None:
         "Download exact authorized publisher input",
         DOWNLOAD_ARTIFACT,
         {
-            "name": "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}"
-            if not authorize_has_artifact_attempt
-            else "hf-static-space-publisher-input-${{ github.sha }}-${{ needs.authorize.outputs.artifact-run-attempt }}",
+            "name": "${{ needs.authorize.outputs.publisher-input-artifact-name }}",
             "path": "${{ runner.temp }}/publisher-input",
         },
     )
@@ -1239,9 +1235,7 @@ def _workflow_governance_contract(workflow: str) -> None:
         "Download exact publisher outcome",
         DOWNLOAD_ARTIFACT,
         {
-            "name": "hf-static-space-publication-${{ github.sha }}-${{ github.run_attempt }}"
-            if not deploy_has_artifact_attempt
-            else "hf-static-space-publication-${{ github.sha }}-${{ needs.deploy.outputs.artifact-run-attempt }}",
+            "name": "${{ needs.deploy.outputs.publication-artifact-name }}",
             "path": "${{ runner.temp }}/publication-evidence",
         },
     )
@@ -1261,9 +1255,7 @@ def _workflow_governance_contract(workflow: str) -> None:
         "Download exact publisher outcome",
         DOWNLOAD_ARTIFACT,
         {
-            "name": "hf-static-space-publication-${{ github.sha }}-${{ github.run_attempt }}"
-            if not deploy_has_artifact_attempt
-            else "hf-static-space-publication-${{ github.sha }}-${{ needs.deploy.outputs.artifact-run-attempt }}",
+            "name": "${{ needs.deploy.outputs.publication-artifact-name }}",
             "path": "${{ runner.temp }}/publication-evidence",
         },
     )
@@ -1272,12 +1264,57 @@ def _workflow_governance_contract(workflow: str) -> None:
         "Download exact public measurement",
         DOWNLOAD_ARTIFACT,
         {
-            "name": "hf-static-space-measurement-${{ github.sha }}-${{ github.run_attempt }}"
-            if not measure_has_artifact_attempt
-            else "hf-static-space-measurement-${{ github.sha }}-${{ needs.measure.outputs.artifact-run-attempt }}",
+            "name": "${{ needs.measure.outputs.measurement-artifact-name }}",
             "path": "${{ runner.temp }}/measurement-evidence",
         },
     )
+    common_terminal_outcomes = [
+        ("--authorization-outcome", "${{ needs.authorize.outputs.authorization-outcome }}"),
+        ("--authorization-evidence-outcome", "${{ needs.authorize.outputs.authorization-evidence-outcome }}"),
+        ("--bundle-outcome", "${{ needs.authorize.outputs.bundle-outcome }}"),
+        ("--publisher-input-outcome", "${{ needs.authorize.outputs.publisher-input-outcome }}"),
+        ("--publisher-digests-outcome", "${{ needs.authorize.outputs.publisher-digests-outcome }}"),
+        ("--publisher-input-evidence-outcome", "${{ needs.authorize.outputs.publisher-input-evidence-outcome }}"),
+        ("--publisher-input-download-outcome", "${{ needs.deploy.outputs.publisher-input-outcome }}"),
+        ("--publisher-rebind-outcome", "${{ needs.deploy.outputs.publisher-rebind-outcome }}"),
+        ("--publisher-environment-outcome", "${{ needs.deploy.outputs.publisher-environment-outcome }}"),
+        ("--publisher-freshness-outcome", "${{ needs.deploy.outputs.publisher-freshness-outcome }}"),
+        ("--publish-outcome", "${{ needs.deploy.outputs.publish-outcome }}"),
+        ("--publisher-evidence-outcome", "${{ needs.deploy.outputs.publisher-evidence-outcome }}"),
+        ("--publisher-evidence-download-outcome", "${{ steps.publisher-evidence-download.outcome }}"),
+        ("--measurement-hardening-outcome", "${{ needs.measure.outputs.measurement-hardening-outcome }}"),
+        ("--measurement-input-outcome", "${{ needs.measure.outputs.measurement-input-outcome }}"),
+        ("--measurement-rebind-outcome", "${{ needs.measure.outputs.measurement-rebind-outcome }}"),
+        ("--measurement-publisher-evidence-outcome", "${{ needs.measure.outputs.measurement-publisher-evidence-outcome }}"),
+        ("--measurement-environment-outcome", "${{ needs.measure.outputs.measurement-environment-outcome }}"),
+        ("--measurement-outcome", "${{ needs.measure.outputs.measurement-outcome }}"),
+        ("--success-evidence-outcome", "${{ needs.measure.outputs.measurement-evidence-outcome }}"),
+        ("--measurement-evidence-download-outcome", "${{ steps.measurement-evidence-download.outcome }}"),
+    ]
+    terminal_outcome_variants = {
+        "Synthesize final receipt or exact workflow-stage failure": common_terminal_outcomes + [
+            ("--attestation-hardening-outcome", "$ATTESTATION_HARDENING_OUTCOME"),
+            ("--attestation-checkout-outcome", "$ATTESTATION_CHECKOUT_OUTCOME"),
+            ("--attestation-environment-outcome", "$ATTESTATION_ENVIRONMENT_OUTCOME"),
+            ("--oidc-outcome", "${{ steps.oidc.outcome }}"),
+        ],
+        "Synthesize terminal artifact-upload failure": common_terminal_outcomes + [
+            ("--attestation-hardening-outcome", "${{ steps.attestation-hardening.outcome }}"),
+            ("--attestation-checkout-outcome", "${{ steps.attestation-checkout.outcome }}"),
+            ("--attestation-environment-outcome", "${{ steps.attestation-environment.outcome }}"),
+            ("--oidc-outcome", "${{ steps.oidc.outcome }}"),
+        ],
+    }
+    outcome_argument = re.compile(
+        r'^\s+(--[a-z0-9-]*outcome)\s+"([^"\r\n]+)"(?:\s*\\)?\s*$',
+        re.MULTILINE,
+    )
+    for step_name, expected_outcomes in terminal_outcome_variants.items():
+        terminal_step = _named_step(attest, step_name)
+        observed_outcomes = outcome_argument.findall(str(terminal_step.get("run", "")))
+        if observed_outcomes != expected_outcomes:
+            raise BoundaryError(f"terminal outcome synthesis is not exact: {step_name}")
+
     oidc = _named_step(
         attest, "Attest canonical exact-revision measurement with GitHub OIDC"
     )
@@ -1285,21 +1322,6 @@ def _workflow_governance_contract(workflow: str) -> None:
         oidc.get("with"), "OIDC attestation inputs"
     ) != {"subject-path": "${{ runner.temp }}/measurement-evidence/hf-live-attestation.json"}:
         raise BoundaryError("OIDC attestation does not bind the exact public measurement")
-    workflow_sha256 = hashlib.sha256(workflow.encode("utf-8")).hexdigest()
-    expected_shell_contract_sha256 = LEGACY_STATIC_SHELL_CONTRACT_SHA256.get(
-        workflow_sha256
-    )
-    if expected_shell_contract_sha256 is None:
-        raise BoundaryError(
-            f"publisher workflow shell step bodies are not covered: {workflow_sha256}"
-        )
-    shell_contract_sha256 = _workflow_shell_contract_sha256(
-        _workflow_document(workflow)
-    )
-    if shell_contract_sha256 != expected_shell_contract_sha256:
-        raise BoundaryError(
-            "publisher workflow shell step bodies and environments are not exact"
-        )
 
 
 def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -> None:
@@ -1321,8 +1343,6 @@ def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -
     if contract["isolated_invocation"] not in workflow:
         raise BoundaryError("publisher invocation is not isolated from repository modules")
     for marker in contract["required_workflow_markers"]:
-        if marker.startswith("artifact-run-attempt:") and "artifact-run-attempt:" not in workflow:
-            continue
         if marker not in workflow:
             raise BoundaryError(f"publisher workflow marker is missing: {marker}")
     for marker in contract["required_publisher_markers"]:
@@ -1406,7 +1426,9 @@ def enforce(manifest: dict, event: dict, api: GitHubAPI) -> dict:
     result = verify_candidate(api, repository, head_sha, entry)
     if binding[0] == "pull_request":
         current = api.get(f"/repos/{repository}/pulls/{binding[1]}")
-        if _pull_binding(current, repository, repository_id, int(binding[1])) != (binding[2], binding[3]):
+        if _pull_binding(current, repository, repository_id, int(binding[1])) != (
+            binding[2], binding[3], binding[4]
+        ):
             raise BoundaryError("pull request metadata drifted after candidate verification")
     elif _ref_sha(api, repository, str(binding[1])) != binding[2] or _ref_sha(api, repository, str(binding[3])) != binding[4]:
         raise BoundaryError("merge-group refs drifted after candidate verification")
