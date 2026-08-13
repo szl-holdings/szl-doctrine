@@ -119,6 +119,14 @@ class FakeAPI:
             raise RB.BoundaryError("fixture API failure")
         if path == f"/repos/{REPOSITORY}":
             return {"id": REPOSITORY_ID, "full_name": REPOSITORY, "default_branch": "main"}
+        if path.startswith("/repos/"):
+            repository = path.removeprefix("/repos/")
+            if repository in RB.TARGET_IDS:
+                return {
+                    "id": RB.TARGET_IDS[repository],
+                    "full_name": repository,
+                    "default_branch": "main",
+                }
         if path == f"/repos/{REPOSITORY}/pulls/7":
             return self._pull()
         if "/pulls/7/files?" in path:
