@@ -644,6 +644,148 @@ def _workflow_governance_contract(workflow: str) -> None:
         raise BoundaryError("publisher workflow top-level permissions are not exact")
 
     jobs = _mapping(document.get("jobs"), "publisher workflow jobs")
+    if workflow_name == "hf-space-deploy":
+        if set(jobs) != {"authorize", "deploy", "measure", "attest"} or any(
+            not isinstance(job, dict) for job in jobs.values()
+        ):
+            raise BoundaryError("publisher workflow job allowlist is not exact")
+        authorize, deploy, measure, attest = (
+            jobs["authorize"],
+            jobs["deploy"],
+            jobs["measure"],
+            jobs["attest"],
+        )
+        expected_job_keys = {
+            "authorize": {
+                "name", "if", "runs-on", "timeout-minutes", "permissions", "outputs",
+                "steps",
+            },
+            "deploy": {
+                "name", "needs", "if", "runs-on", "timeout-minutes", "permissions",
+                "outputs", "steps",
+            },
+            "measure": {
+                "name", "needs", "if", "runs-on", "timeout-minutes", "permissions",
+                "outputs", "steps",
+            },
+            "attest": {
+                "name", "needs", "if", "runs-on", "timeout-minutes", "permissions",
+                "env", "steps",
+            },
+        }
+        if set(authorize) != expected_job_keys["authorize"]:
+            raise BoundaryError("publisher workflow job fields are not exact: authorize")
+        if set(deploy) != expected_job_keys["deploy"]:
+            raise BoundaryError("publisher workflow job fields are not exact: deploy")
+        if set(measure) != expected_job_keys["measure"]:
+            raise BoundaryError("publisher workflow job fields are not exact: measure")
+        if set(attest) != expected_job_keys["attest"]:
+            raise BoundaryError("publisher workflow job fields are not exact: attest")
+        if authorize.get("name") != "authorize-exact-governed-merge" or authorize.get(
+            "runs-on"
+        ) != "ubuntu-latest" or authorize.get("timeout-minutes") != 15:
+            raise BoundaryError("authorization job execution profile is not exact")
+        if deploy.get("name") != "publish-exact-protected-main" or deploy.get(
+            "runs-on"
+        ) != "ubuntu-latest" or deploy.get("timeout-minutes") != 20:
+            raise BoundaryError("publisher job execution profile is not exact")
+        if measure.get("name") != "measure-and-reauthorize-publication" or measure.get(
+            "runs-on"
+        ) != "ubuntu-latest" or measure.get("timeout-minutes") != 35:
+            raise BoundaryError("measurement job execution profile is not exact")
+        if attest.get("name") != "attest-terminal-publication-evidence" or attest.get(
+            "runs-on"
+        ) != "ubuntu-latest" or attest.get("timeout-minutes") != 25:
+            raise BoundaryError("attestation job execution profile is not exact")
+        if authorize.get("if") != "github.ref == 'refs/heads/main'":
+            raise BoundaryError("authorization job is not protected-main push-only")
+        if deploy.get("if") != "needs.authorize.result == 'success'":
+            raise BoundaryError("publisher job trigger is not exact")
+        if measure.get("if") != (
+            "always() && needs.authorize.result == 'success' && "
+            "needs.deploy.result == 'success'"
+        ):
+            raise BoundaryError("measurement job trigger is not exact")
+        if attest.get("if") != "always() && needs.authorize.result == 'success'":
+            raise BoundaryError("attestation job trigger is not exact")
+        if authorize.get("outputs") != {
+            "source_sha": "${{ steps.source.outputs.sha }}",
+            "artifact_name": "${{ steps.seal-input.outputs.artifact_name }}",
+            "input_manifest_sha256": "${{ steps.seal-input.outputs.manifest_sha256 }}",
+            "transport_artifact_digest": "${{ steps.authorized-input-upload.outputs.artifact-digest }}",
+        }:
+            raise BoundaryError("authorization outputs are not exact")
+        if deploy.get("outputs") != {
+            "publish_outcome": "${{ steps.publish.outcome }}",
+            "artifact_outcome": "${{ steps.publisher-artifact-gate.outputs.outcome }}",
+            "artifact_primary_outcome": "${{ steps.publisher-artifact-primary.outcome }}",
+            "artifact_retry_outcome": "${{ steps.publisher-artifact-retry.outcome }}",
+        }:
+            raise BoundaryError("publisher outputs are not exact")
+        if measure.get("outputs") != {
+            "measurement_outcome": "${{ steps.measure.outcome }}",
+            "failure_receipt_outcome": "${{ steps.deployment-failure-receipt.outcome }}",
+            "artifact_outcome": "${{ steps.measurement-artifact-gate.outputs.outcome }}",
+        }:
+            raise BoundaryError("measurement outputs are not exact")
+        if deploy.get("needs") != "authorize" or set(measure.get("needs", [])) != {
+            "authorize", "deploy"
+        }:
+            raise BoundaryError("workflow needs chain is not exact")
+        if attest.get("needs") != ["authorize", "deploy", "measure"]:
+            raise BoundaryError("attestation workflow dependency chain is not exact")
+        if _permissions(authorize.get("permissions"), "authorization job") != STATIC_AUTHORIZATION_PERMISSIONS:
+            raise BoundaryError("authorization job permissions are not exact")
+        if _permissions(deploy.get("permissions"), "publisher job") != STATIC_PUBLISHER_PERMISSIONS:
+            raise BoundaryError("publisher job permissions are not credential-free")
+        if _permissions(measure.get("permissions"), "measurement job") != STATIC_AUTHORIZATION_PERMISSIONS:
+            raise BoundaryError("measurement job permissions are not exact and read-only")
+        if _permissions(attest.get("permissions"), "attestation job") != STATIC_ATTESTATION_PERMISSIONS:
+            raise BoundaryError("attestation job permissions are not exact")
+        if attest.get("env") != {
+            "GITHUB_TOKEN": "",
+            "GH_TOKEN": "",
+            "HF_TOKEN": "",
+        }:
+            raise BoundaryError("attestation job environment is not exact")
+        for job in jobs.values():
+            _steps(job, f"publisher workflow {job.get('name')}")
+        if any(
+            "id" in step and not isinstance(step.get("id"), str)
+            for job in jobs.values()
+            for step in _steps(job, f"publisher workflow {job.get('name')}")
+        ):
+            raise BoundaryError("publisher workflow step ids are not exact")
+        secret_expression = re.compile(r"(?i)\bsecrets\b")
+        secret_values = [
+            value
+            for _path, value in _walk_scalars(document)
+            if isinstance(value, str) and secret_expression.search(value)
+        ]
+        if secret_values != [HF_SECRET]:
+            raise BoundaryError("publisher workflow isolated secret usage is not exact")
+        github_token_expression = re.compile(r"(?i)\bgithub\s*\.\s*token\b")
+        github_bracket_expression = re.compile(r"(?i)\bgithub\s*\[")
+        github_whole_context = re.compile(r"(?i)\b(?:tojson|fromjson)\s*\(\s*github\s*\)")
+        for path, value in _walk_scalars(document):
+            if path and path[-1] == "HF_TOKEN" and value not in {"", HF_SECRET}:
+                raise BoundaryError("HF_TOKEN is materialized outside the exact secret boundary")
+            if path and path[-1] == "secrets":
+                raise BoundaryError("publisher workflow inherits or passes a secrets mapping")
+            if isinstance(value, str) and (
+                github_bracket_expression.search(value)
+                or github_whole_context.search(value)
+                or (github_token_expression.search(value) and value != NATIVE_GOVERNANCE_TOKEN)
+            ):
+                raise BoundaryError("publisher workflow token consumption is not isolated")
+        if any(
+            value == NATIVE_GOVERNANCE_TOKEN
+            for _path, value in _walk_scalars(deploy)
+        ):
+            raise BoundaryError("publisher workflow uses repository token in mutation job")
+        return
+
+    jobs = _mapping(document.get("jobs"), "publisher workflow jobs")
     if set(jobs) != STATIC_JOB_IDS or any(
         not isinstance(job, dict) for job in jobs.values()
     ):
