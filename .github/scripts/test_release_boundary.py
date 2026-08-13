@@ -240,6 +240,11 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(set(kernel["secret_execution_files"].values()), {"PENDING"})
         with self.assertRaisesRegex(RB.BoundaryError, "no ACTIVE"):
             RB.verify_all_active(manifest, FakeAPI())
+        explicit_pending = RB.verify_all_active(manifest, FakeAPI(), allow_explicit_pending=True)
+        self.assertEqual(explicit_pending["status"], "MANIFEST_INCOMPLETE_PENDING_TARGETS")
+        self.assertEqual(explicit_pending["targets"], [])
+        self.assertEqual(len(explicit_pending["pending_targets"]), 6)
+        self.assertFalse(explicit_pending["authorization_complete"])
 
     def test_kernel_manifest_is_explicitly_fail_closed(self) -> None:
         kernel = RB.load_manifest(MANIFEST_PATH)["targets"]["szl-holdings/szl-kernels-live"]

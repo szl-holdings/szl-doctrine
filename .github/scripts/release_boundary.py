@@ -1448,19 +1448,28 @@ def verify_manifest_target(manifest: dict, repository: str, head_sha: str, api: 
     return result
 
 
-def verify_all_active(manifest: dict, api: GitHubAPI) -> dict:
+def verify_all_active(
+    manifest: dict, api: GitHubAPI, *, allow_explicit_pending: bool = False
+) -> dict:
     active = [
         (repository, entry)
         for repository, entry in sorted(manifest["targets"].items())
         if entry["state"] == "ACTIVE"
     ]
-    if not active:
-        raise BoundaryError("no ACTIVE manifest targets exist; final heads are not authorized")
     pending = sorted(
         repository
         for repository, entry in manifest["targets"].items()
         if entry["state"] == "PENDING"
     )
+    if not active:
+        if allow_explicit_pending:
+            return {
+                "status": "MANIFEST_INCOMPLETE_PENDING_TARGETS",
+                "targets": [],
+                "pending_targets": pending,
+                "authorization_complete": False,
+            }
+        raise BoundaryError("no ACTIVE manifest targets exist; final heads are not authorized")
     return {
         "status": (
             "MANIFEST_INCOMPLETE_PENDING_TARGETS"
@@ -1498,7 +1507,7 @@ def main() -> int:
         if args.verify_target:
             result = verify_manifest_target(manifest, args.verify_target, _exact_sha(args.head_sha, "verification head"), api)
         elif args.verify_all_active:
-            result = verify_all_active(manifest, api)
+            result = verify_all_active(manifest, api, allow_explicit_pending=args.allow_explicit_pending)
             if not result["authorization_complete"] and not args.allow_explicit_pending:
                 exit_code = 1
         else:
