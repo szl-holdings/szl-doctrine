@@ -601,15 +601,27 @@ def _workflow_governance_contract(workflow: str) -> None:
     document = _workflow_document(workflow)
     if set(document) != {"name", "on", "permissions", "concurrency", "jobs"}:
         raise BoundaryError("publisher workflow top-level field allowlist is not exact")
-    if document.get("name") not in {"Governed static Space release", "hf-space-deploy", "kernel-contracts"}:
+    workflow_name = document.get("name")
+    if workflow_name not in {"Governed static Space release", "hf-space-deploy", "kernel-contracts"}:
         raise BoundaryError("publisher workflow identity is not exact")
     trigger = _mapping(document.get("on"), "publisher workflow trigger")
-    if trigger != {
-        "pull_request": {
-            "types": ["opened", "synchronize", "reopened", "edited", "ready_for_review"]
-        },
-        "push": {"branches": ["main"]},
-    }:
+    if workflow_name == "hf-space-deploy":
+        expected_trigger = {"push": {"branches": ["main"]}}
+    elif workflow_name == "kernel-contracts":
+        expected_trigger = {
+            "pull_request": None,
+            "push": {"branches": ["main"]},
+            "schedule": [{"cron": "19 7 * * *"}],
+            "workflow_dispatch": None,
+        }
+    else:
+        expected_trigger = {
+            "pull_request": {
+                "types": ["opened", "synchronize", "reopened", "edited", "ready_for_review"]
+            },
+            "push": {"branches": ["main"]},
+        }
+    if trigger != expected_trigger:
         raise BoundaryError("publisher workflow trigger is not exact")
     concurrency = _mapping(document.get("concurrency"), "publisher workflow concurrency")
     if concurrency != {
