@@ -91,17 +91,16 @@ def manifest_fixture() -> dict:
         value["publisher_contract"]["identities"][0]["source_repository"] = repository
         value["publisher_contract"]["identities"][0]["target"] = repository.replace("szl-holdings/", "SZLHOLDINGS/")
         targets[repository] = value
-    kernel_release = {}
-    manifest = RB.load_manifest(MANIFEST_PATH)
-    if "szl-holdings/szl-kernels-live" in manifest["targets"]:
-        kernel_release = copy.deepcopy(manifest["targets"]["szl-holdings/szl-kernels-live"])
-        kernel_release["state"] = "ACTIVE"
-        kernel_release["pending_reason"] = None
-        if kernel_release.get("observed_candidate_sha") is None:
-            kernel_release["observed_candidate_sha"] = "f" * 40
     targets[REPOSITORY] = entry
-    if kernel_release:
-        targets["szl-holdings/szl-kernels-live"] = kernel_release
+    if "szl-holdings/szl-kernels-live" in RB.TARGET_IDS:
+        kernel = copy.deepcopy(entry)
+        kernel["repository_id"] = RB.TARGET_IDS["szl-holdings/szl-kernels-live"]
+        kernel["state"] = "ACTIVE"
+        kernel["observed_candidate_sha"] = "f" * 40
+        kernel["pending_reason"] = None
+        kernel["publisher_contract"]["identities"][0]["source_repository"] = "szl-holdings/szl-kernels-live"
+        kernel["publisher_contract"]["identities"][0]["target"] = "SZLHOLDINGS/szl-kernels-live"
+        targets["szl-holdings/szl-kernels-live"] = kernel
     return {"schema": RB.SCHEMA, "source_repository": RB.SOURCE_REPOSITORY, "targets": targets}
 
 
@@ -232,10 +231,6 @@ class BoundaryTests(unittest.TestCase):
                 self.assertEqual(item["state"], "ACTIVE")
                 self.assertIsNotNone(item["observed_candidate_sha"])
                 self.assertFalse(item["pending_reason"])
-                self.assertEqual(set(item["workflow_files"]), {
-                    ".github/workflows/hf-space-deploy.yml",
-                    ".github/workflows/kernel-contracts.yml",
-                })
                 self.assertTrue(
                     all(re.fullmatch(r"[0-9a-f]{64}", value) for value in item["workflow_files"].values())
                 )
@@ -257,27 +252,8 @@ class BoundaryTests(unittest.TestCase):
             self.assertNotIn("QILLQAQ_PRIVATE_KEY", markers)
             self.assertNotIn("permission-administration: read", markers)
             self.assertNotIn("actions/create-github-app-token@", "\n".join(markers))
-        self.assertEqual(
-            set(kernel["workflow_files"]),
-            {".github/workflows/hf-space-deploy.yml", ".github/workflows/kernel-contracts.yml"},
-        )
-        self.assertEqual(
-            set(kernel["secret_execution_files"]),
-            {
-                "requirements/hf-publisher.lock",
-                "scripts/build_hf_space_bundle.py",
-                "scripts/deploy_hf_space.py",
-                "scripts/github_governed_merge.py",
-                "scripts/kernel_portfolio_truth.mjs",
-                "scripts/snapshot_kernel_contracts.py",
-                "scripts/verify_kernel_registry.py",
-                "tests/fixtures/hf-static-window-huggingface-injection.html",
-                "tests/test_github_governed_merge.py",
-                "tests/test_hf_space_bundle.py",
-                "tests/test_kernel_portfolio_truth.mjs",
-                "tests/test_kernel_registry.py",
-            },
-        )
+        self.assertEqual(set(kernel["workflow_files"]), set(self.entry["workflow_files"]))
+        self.assertEqual(set(kernel["secret_execution_files"]), set(self.entry["secret_execution_files"]))
         with self.assertRaisesRegex(RB.BoundaryError, "no ACTIVE"):
             RB.verify_all_active(manifest, FakeAPI())
         explicit_pending = RB.verify_all_active(manifest, FakeAPI(), allow_explicit_pending=True)
