@@ -348,7 +348,7 @@
                                                                                  ".github/workflows/kernel-contracts.yml":  "398970dfe01657119a05d2049836a1ad134f89c5d0cca9760960ff72b2afa95c"
                                                                              },
                                                           "secret_execution_files":  {
-                                                                                         "requirements/hf-publisher.lock":  "2d5c748eedfa258356ed09d5ec05121d5834b21f6e19b80aa6df1f576d734523",
+                                                                                         "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                          "scripts/build_hf_space_bundle.py":  "84227358cd68bd739c7ecfbee97e287d5baeb93c35515d786a698e2fd6e03191",
                                                                                          "scripts/deploy_hf_space.py":  "3269a8079338717b75a4848f392f319083897e8551ab0bdf6a2684482f6b9b27",
                                                                                          "scripts/kernel_portfolio_truth.mjs":  "b5ca335fbc0393a7d152d2fca2904e07a572d2d34330c7869ee44011749dc993",
@@ -556,6 +556,7 @@
                                                       }
                 }
 }
+
 
 
 
