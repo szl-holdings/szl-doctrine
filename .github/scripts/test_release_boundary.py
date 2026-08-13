@@ -31,6 +31,70 @@ HEAD, BASE, TREE = "1" * 40, "2" * 40, "3" * 40
 WORKFLOW = (
     HERE.parent / "release-boundary" / "fixtures" / "hf-static-space.yml"
 ).read_text(encoding="utf-8")
+KERNEL_WORKFLOW = """name: hf-space-deploy
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: hf-space-deploy-${{ github.repository }}-production
+  cancel-in-progress: false
+jobs:
+  authorize:
+    name: authorize-exact-governed-merge
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs: {}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+  deploy:
+    name: publish-exact-protected-main
+    if: needs.authorize.result == 'success'
+    needs: authorize
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs: {}
+    steps:
+      - name: Isolated publisher mutation command
+        run: |
+          /usr/bin/env -i
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  measure:
+    name: measure-and-reauthorize-publication
+    if: always() && needs.authorize.result == 'success' && needs.deploy.result == 'success'
+    needs: [authorize, deploy]
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs: {}
+    steps:
+      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+  attest:
+    name: attest-terminal-publication-evidence
+    if: always() && needs.authorize.result == 'success'
+    needs: [authorize, deploy, measure]
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env: {}
+    steps:
+      - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+"""
 
 PUBLISHER = b"""import json
 governed_schema = "szl.github-governed-merge/v3"
@@ -99,6 +163,22 @@ def manifest_fixture() -> dict:
         kernel["state"] = "ACTIVE"
         kernel["observed_candidate_sha"] = "f" * 40
         kernel["pending_reason"] = None
+        kernel["workflow_files"] = {
+            ".github/workflows/hf-space-deploy.yml": digest(KERNEL_WORKFLOW.encode()),
+            ".github/workflows/kernel-contracts.yml": digest(KERNEL_WORKFLOW.encode()),
+        }
+        kernel["publisher_contract"]["publisher_workflow"] = ".github/workflows/hf-space-deploy.yml"
+        kernel["publisher_contract"]["required_workflow_markers"] = [
+            "name: hf-space-deploy",
+            "on:",
+            "push:",
+            "branches: [main]",
+            "concurrency:",
+            "cancel-in-progress: false",
+            "authorize-exact-governed-merge",
+            "publish-exact-protected-main",
+            "measure-and-reauthorize-publication",
+        ]
         kernel["publisher_contract"]["identities"][0]["source_repository"] = "szl-holdings/szl-kernels-live"
         kernel["publisher_contract"]["identities"][0]["target"] = "SZLHOLDINGS/szl-kernels-live"
         kernel["secret_execution_files"][".hf-space.json"] = digest(KERNEL_CONFIG)
@@ -110,13 +190,23 @@ def blob_values() -> dict[str, bytes]:
     return {".github/workflows/hf-static-space.yml": WORKFLOW.encode(), ".hf-space.json": CONFIG, "requirements/hf-publisher.lock": LOCK, "requirements/hf-validator.lock": VALIDATOR_LOCK, "scripts/hf_static_space.py": PUBLISHER, "tests/test_hf_static_space.py": TEST_RUNTIME, "LICENSE": b"license", "README.md": b"readme", "index.html": b"<p>public</p>"}
 
 
+def kernel_blob_values() -> dict[str, bytes]:
+    return {
+        ".github/workflows/hf-space-deploy.yml": KERNEL_WORKFLOW.encode(),
+        ".github/workflows/kernel-contracts.yml": KERNEL_WORKFLOW.encode(),
+    }
+
+
 class FakeAPI:
     def __init__(self, values: dict[str, bytes] | None = None, changed: int = 101) -> None:
         values = values or blob_values()
         self.values, self.changed, self.calls = values, changed, []
+        kernel_values = dict(values)
+        kernel_values.pop(".github/workflows/hf-static-space.yml", None)
+        kernel_values.update({".hf-space.json": KERNEL_CONFIG}, **kernel_blob_values())
         self.values_by_repo = {
             REPOSITORY: values,
-            "szl-holdings/szl-kernels-live": dict(values, **{".hf-space.json": KERNEL_CONFIG}),
+            "szl-holdings/szl-kernels-live": kernel_values,
         }
         self.pull_heads, self.pull_bases, self.pull_reads = [HEAD, HEAD, HEAD], [BASE, BASE, BASE], 0
         self.ref_heads = {"heads/gh-readonly-queue/main/pr-1": HEAD, "heads/main": BASE}
@@ -223,44 +313,36 @@ class BoundaryTests(unittest.TestCase):
             name for name, item in self.manifest["targets"].items() if item["state"] == "ACTIVE"
         )
 
-    def test_repository_manifest_is_frozen_until_signed_successor_heads(self) -> None:
+    def test_repository_manifest_activates_exact_signed_successor_heads(self) -> None:
         manifest = RB.load_manifest(MANIFEST_PATH)
-        pending_targets = sorted(
-            name for name, item in manifest["targets"].items() if item["state"] == "PENDING"
+        active_targets = sorted(
+            name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"
         )
         self.assertEqual(
-            {name for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
-            {"szl-holdings/szl-kernels-live"},
+            {name: item["observed_candidate_sha"] for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
+            {
+                "szl-holdings/energy-attest-holo": "bb994489a1f6ff8121e9c60d43f0554aa61a676f",
+                "szl-holdings/governed-norm-holo": "5072be516d9d3026b70dcde51feec0f40a0cbc5d",
+                "szl-holdings/lambda-gate-holo": "1617bf6cafe33ba56a3e35f9dc4c61e150ab9919",
+                "szl-holdings/receipt-chain-live": "4569e00d52aa050faa20dd84dccad7bb19098566",
+                "szl-holdings/szl-kernels-live": "58ee0fb964dd2f5dfc7bd9f4f24f0f8772d2d48f",
+                "szl-holdings/szl-provctl-live": "f58882d1120f77a952d009b26bee8e40192df091",
+            },
+        )
+        self.assertEqual(
+            set(active_targets),
+            set(manifest["targets"]),
         )
         kernel = manifest["targets"]["szl-holdings/szl-kernels-live"]
-        self.assertEqual(kernel["state"], "ACTIVE")
-        self.assertIsNotNone(kernel["observed_candidate_sha"])
-        self.assertFalse(kernel["pending_reason"])
-        self.assertEqual(
-            {
-                name: item["observed_candidate_sha"]
-                for name, item in manifest["targets"].items()
-                if item["state"] == "PENDING"
-            },
-            {name: None for name in pending_targets},
-        )
         self.assertIsNotNone(kernel["observed_candidate_sha"])
         for name, item in manifest["targets"].items():
-            if name == "szl-holdings/szl-kernels-live":
-                self.assertEqual(item["state"], "ACTIVE")
-                self.assertIsNotNone(item["observed_candidate_sha"])
-                self.assertFalse(item["pending_reason"])
-                self.assertTrue(
-                    all(re.fullmatch(r"[0-9a-f]{64}", value) for value in item["workflow_files"].values())
-                )
-                self.assertTrue(
-                    all(re.fullmatch(r"[0-9a-f]{64}", value) for value in item["secret_execution_files"].values())
-                )
-            else:
-                self.assertEqual(item["state"], "PENDING")
-                self.assertTrue(item["pending_reason"])
-                self.assertEqual(set(item["workflow_files"].values()), {"PENDING"})
-                self.assertEqual(set(item["secret_execution_files"].values()), {"PENDING"})
+            self.assertEqual(item["state"], "ACTIVE")
+            self.assertIsNone(item["pending_reason"])
+            for digest in (
+                list(item["workflow_files"].values())
+                + list(item["secret_execution_files"].values())
+            ):
+                self.assertIsNotNone(re.fullmatch(r"[0-9a-f]{64}", digest))
             markers = set(item["publisher_contract"]["required_workflow_markers"])
             if name != "szl-holdings/szl-kernels-live":
                 self.assertIn("permissions: {}", markers)
@@ -271,24 +353,82 @@ class BoundaryTests(unittest.TestCase):
             self.assertNotIn("QILLQAQ_PRIVATE_KEY", markers)
             self.assertNotIn("permission-administration: read", markers)
             self.assertNotIn("actions/create-github-app-token@", "\n".join(markers))
-        self.assertTrue(set(kernel["workflow_files"]))
-        self.assertTrue(set(kernel["secret_execution_files"]))
-        with self.assertRaises(RB.BoundaryError):
-            RB.verify_all_active(manifest, FakeAPI())
-        explicit_pending = RB.verify_all_active(self.manifest, FakeAPI(), allow_explicit_pending=True)
-        self.assertEqual(explicit_pending["status"], "MANIFEST_INCOMPLETE_PENDING_TARGETS")
-        self.assertEqual(len(explicit_pending["targets"]), len(self.active_targets))
-        self.assertTrue(all(target["status"] == "MANIFEST_TARGET_VERIFIED" for target in explicit_pending["targets"]))
-        self.assertEqual(explicit_pending["pending_targets"], self.pending_targets)
-        self.assertFalse(explicit_pending["authorization_complete"])
+        self.assertEqual(
+            set(kernel["workflow_files"]),
+            {".github/workflows/hf-space-deploy.yml", ".github/workflows/kernel-contracts.yml"},
+        )
+        self.assertEqual(
+            set(kernel["secret_execution_files"]),
+            {
+                "requirements/hf-publisher.lock",
+                "scripts/build_hf_space_bundle.py",
+                "scripts/deploy_hf_space.py",
+                "scripts/github_governed_merge.py",
+                "scripts/kernel_portfolio_truth.mjs",
+                "scripts/snapshot_kernel_contracts.py",
+                "scripts/verify_kernel_registry.py",
+                "tests/fixtures/hf-static-window-huggingface-injection.html",
+                "tests/test_github_governed_merge.py",
+                "tests/test_hf_space_bundle.py",
+                "tests/test_hf_space_workflow_contract.py",
+                "tests/test_kernel_portfolio_truth.mjs",
+                "tests/test_kernel_registry.py",
+            },
+        )
+        kernel_markers = set(kernel["publisher_contract"]["required_workflow_markers"])
+        self.assertIn(
+            "uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32",
+            kernel_markers,
+        )
+        self.assertIn(
+            "subject-path: ${{ runner.temp }}/kernel-terminal-candidate/hf-canonical-success-receipt.json",
+            kernel_markers,
+        )
+        self.assertNotIn("--action attest-build-provenance", kernel_markers)
+        self.assertTrue(all(
+            re.fullmatch(r"[0-9a-f]{64}", value)
+            for value in kernel["workflow_files"].values()
+        ))
+        self.assertTrue(all(
+            re.fullmatch(r"[0-9a-f]{64}", value)
+            for value in kernel["secret_execution_files"].values()
+        ))
 
-    def test_kernel_manifest_is_explicitly_fail_closed(self) -> None:
+    def test_kernel_manifest_is_exactly_active(self) -> None:
         kernel = RB.load_manifest(MANIFEST_PATH)["targets"]["szl-holdings/szl-kernels-live"]
         self.assertEqual(kernel["state"], "ACTIVE")
-        self.assertIsNotNone(kernel["observed_candidate_sha"])
-        self.assertFalse(kernel["pending_reason"])
-        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", value) for value in kernel["workflow_files"].values()))
-        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", value) for value in kernel["secret_execution_files"].values()))
+        self.assertEqual(
+            kernel["observed_candidate_sha"],
+            "58ee0fb964dd2f5dfc7bd9f4f24f0f8772d2d48f",
+        )
+        self.assertIsNone(kernel["pending_reason"])
+        for digest in (
+            list(kernel["workflow_files"].values())
+            + list(kernel["secret_execution_files"].values())
+        ):
+            self.assertIsNotNone(re.fullmatch(r"[0-9a-f]{64}", digest))
+
+    def test_kernel_workflow_governance_profile_is_exact(self) -> None:
+        RB._kernel_workflow_governance_contract(KERNEL_WORKFLOW)
+        mutations = (
+            ("name: hf-space-deploy", "name: other", "identity"),
+            ("branches: [main]", "branches: [develop]", "trigger"),
+            ("cancel-in-progress: false", "cancel-in-progress: true", "concurrency"),
+            (
+                "name: publish-exact-protected-main",
+                "name: publish-unreviewed-main",
+                "execution profile",
+            ),
+            ("needs: authorize", "needs: attest", "execution profile"),
+            ("id-token: write", "id-token: read", "permissions"),
+        )
+        for old, new, message in mutations:
+            with self.subTest(old=old), self.assertRaisesRegex(
+                RB.BoundaryError, message
+            ):
+                RB._kernel_workflow_governance_contract(
+                    KERNEL_WORKFLOW.replace(old, new, 1)
+                )
 
     def test_all_active_verification_reports_verified_static_before_pending(self) -> None:
         result = RB.verify_all_active(self.manifest, FakeAPI())
@@ -582,6 +722,14 @@ class BoundaryTests(unittest.TestCase):
             WORKFLOW.replace(
                 '"$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" fresh-main',
                 '"$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" deploy',
+                1,
+            ),
+            "publisher freshness command",
+        )
+        rejected(
+            WORKFLOW.replace(
+                "github-main-preflight-freshness.json",
+                "github-main-freshness.json",
                 1,
             ),
             "publisher freshness command",
