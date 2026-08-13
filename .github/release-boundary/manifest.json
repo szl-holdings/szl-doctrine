@@ -359,7 +359,7 @@
                                                                                          "tests/test_kernel_portfolio_truth.mjs":  "d18d25b0e3dd6b30a0ddc2777f2481bbbd0514e09091314c4d6025040bbe8aa6",
                                                                                          "tests/test_kernel_registry.py":  "a49ae8ed4d0d290473ab1de02b178d1ebaa7684168c82b1722480351b514383f",
                                                                                          "tests/test_hf_space_workflow_contract.py":  "edcdcf0f5b00f3f6d84ae5968bb0c67fa11b3281bf1c1b22f1e6321b752d926d",
-                                                                                         "scripts/github_governed_merge.py":  "2f5bd8541fa0cd6f7f0a18fec62dc4287c7511fc7e44d9fba8052f3046ccf7b0",
+                                                                                         "scripts/github_governed_merge.py":  "f385d7d85302e569345e249229eb4ecbcfdde19739131ab3eadea31534afcf98",
                                                                                          "tests/test_github_governed_merge.py":  "d3eac983b770e9221a4db9ce26216e061def035e4ab6d37119089ab03c0ec282"
                                                                                      },
                                                           "mutable_public_assets":  [
@@ -556,6 +556,7 @@
                                                       }
                 }
 }
+
 
 
 
