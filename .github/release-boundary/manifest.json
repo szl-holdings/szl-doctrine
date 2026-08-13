@@ -345,7 +345,7 @@
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
                                                                                  ".github/workflows/hf-space-deploy.yml":  "68c5f0dede4be94823168a5abd16976ca32012f2538383560e58a991da9ef63f",
-                                                                                 ".github/workflows/kernel-contracts.yml":  "dbbb0c82e44a609d81fa3b181428f7f5eb0183c0c59ba7767f0b9fe93dee47c1"
+                                                                                 ".github/workflows/kernel-contracts.yml":  "398970dfe01657119a05d2049836a1ad134f89c5d0cca9760960ff72b2afa95c"
                                                                              },
                                                           "secret_execution_files":  {
                                                                                          "requirements/hf-publisher.lock":  "2d5c748eedfa258356ed09d5ec05121d5834b21f6e19b80aa6df1f576d734523",
@@ -556,6 +556,7 @@
                                                       }
                 }
 }
+
 
 
 
