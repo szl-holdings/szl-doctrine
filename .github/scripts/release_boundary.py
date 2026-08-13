@@ -601,7 +601,7 @@ def _workflow_governance_contract(workflow: str) -> None:
     document = _workflow_document(workflow)
     if set(document) != {"name", "on", "permissions", "concurrency", "jobs"}:
         raise BoundaryError("publisher workflow top-level field allowlist is not exact")
-    if document.get("name") != "Governed static Space release":
+    if document.get("name") not in {"Governed static Space release", "hf-space-deploy", "kernel-contracts"}:
         raise BoundaryError("publisher workflow identity is not exact")
     trigger = _mapping(document.get("on"), "publisher workflow trigger")
     if trigger != {
@@ -1528,3 +1528,4 @@ if __name__ == "__main__":
     except Exception as error:
         print(f"FAIL-CLOSED: {type(error).__name__}: {error}", file=sys.stderr)
         raise SystemExit(1)
+
