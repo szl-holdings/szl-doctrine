@@ -264,12 +264,12 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(
             {name: item["observed_candidate_sha"] for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
             {
-                "szl-holdings/energy-attest-holo": "ef7a5ed446665d788625cbc2f4fb7c43a5334ac3",
-                "szl-holdings/governed-norm-holo": "22a8ed08d5630be6f0cb952fe86413b2b2c89e55",
-                "szl-holdings/lambda-gate-holo": "4faea953fec6b72cd482aca9f1ee0d5b6f0d90ae",
-                "szl-holdings/receipt-chain-live": "6852867b9bac92d5ea19412c8b1ff26e33ab3494",
-                "szl-holdings/szl-kernels-live": "07c11e05ef1dbf40810f54a178b5b4b95b988edf",
-                "szl-holdings/szl-provctl-live": "d478f0a97eef4b347a0ff5a7e103bde77feb00b6",
+                "szl-holdings/energy-attest-holo": "6851c00110b275d8207c8038ffc78886cdff55fb",
+                "szl-holdings/governed-norm-holo": "5dd73429780ac105aa971574d938c82c2df129f8",
+                "szl-holdings/lambda-gate-holo": "c17550f9c61dd2c25ac928218ec34ee47048e67c",
+                "szl-holdings/receipt-chain-live": "787891967b412fd3211856ffc0b2e6e4bf6da205",
+                "szl-holdings/szl-kernels-live": "6c48224a8e8a4ddd05b8e1e46b4948a61634ee66",
+                "szl-holdings/szl-provctl-live": "bf0903cdad0a78d06542fd5457db8d1daf82ea43",
             },
         )
         self.assertEqual(
@@ -342,7 +342,7 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(kernel["state"], "ACTIVE")
         self.assertEqual(
             kernel["observed_candidate_sha"],
-            "07c11e05ef1dbf40810f54a178b5b4b95b988edf",
+            "6c48224a8e8a4ddd05b8e1e46b4948a61634ee66",
         )
         self.assertIsNone(kernel["pending_reason"])
         for digest in (
