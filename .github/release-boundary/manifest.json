@@ -5,7 +5,7 @@
                     "szl-holdings/energy-attest-holo":  {
                                                             "repository_id":  1295929955,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "ef7a5ed446665d788625cbc2f4fb7c43a5334ac3",
+                                                            "observed_candidate_sha":  "6851c00110b275d8207c8038ffc78886cdff55fb",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
                                                                                    ".github/workflows/hf-static-space.yml":  "29c6166108fa5edf46970f0dc72b98dbc3c74d3e8732ce79719b26d3eb2f5076"
@@ -110,7 +110,7 @@
                     "szl-holdings/governed-norm-holo":  {
                                                             "repository_id":  1295931607,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "22a8ed08d5630be6f0cb952fe86413b2b2c89e55",
+                                                            "observed_candidate_sha":  "5dd73429780ac105aa971574d938c82c2df129f8",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
                                                                                    ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
@@ -215,7 +215,7 @@
                     "szl-holdings/lambda-gate-holo":  {
                                                           "repository_id":  1295931629,
                                                           "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "4faea953fec6b72cd482aca9f1ee0d5b6f0d90ae",
+                                                          "observed_candidate_sha":  "c17550f9c61dd2c25ac928218ec34ee47048e67c",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
                                                                                  ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
@@ -320,7 +320,7 @@
                     "szl-holdings/receipt-chain-live":  {
                                                             "repository_id":  1295940016,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "6852867b9bac92d5ea19412c8b1ff26e33ab3494",
+                                                            "observed_candidate_sha":  "787891967b412fd3211856ffc0b2e6e4bf6da205",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
                                                                                    ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
@@ -425,7 +425,7 @@
                     "szl-holdings/szl-kernels-live":  {
                                                           "repository_id":  1295941334,
                                                           "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "07c11e05ef1dbf40810f54a178b5b4b95b988edf",
+                                                          "observed_candidate_sha":  "6c48224a8e8a4ddd05b8e1e46b4948a61634ee66",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
                                                                                  ".github/workflows/hf-space-deploy.yml":  "04bd0c3580acfd882690a20626e6b4f09a3ece2c2dd08f9eb8018861633fd061",
@@ -575,7 +575,7 @@
                     "szl-holdings/szl-provctl-live":  {
                                                           "repository_id":  1295941247,
                                                           "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "d478f0a97eef4b347a0ff5a7e103bde77feb00b6",
+                                                          "observed_candidate_sha":  "bf0903cdad0a78d06542fd5457db8d1daf82ea43",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
                                                                                  ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
