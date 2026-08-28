@@ -1,0 +1,274 @@
+name: Patch exact post-merge inventory publisher heads
+
+on:
+  push:
+    branches:
+      - fix/authorize-postmerge-inventory-heads-20260828
+
+permissions:
+  contents: write
+
+concurrency:
+  group: patch-postmerge-inventory-heads-20260828
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    if: github.repository == 'szl-holdings/szl-doctrine' && github.ref == 'refs/heads/fix/authorize-postmerge-inventory-heads-20260828'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c
+        with:
+          egress-policy: audit
+
+      - name: Check out exact doctrine repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/authorize-postmerge-inventory-heads-20260828
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12.13'
+          check-latest: false
+
+      - name: Bind exact candidate bytes and remove bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -I - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+          import re
+          import urllib.parse
+          import urllib.request
+
+          API_ROOT = "https://api.github.com"
+          TARGETS = {
+              "szl-holdings/governed-norm-holo": {
+                  "pr": 7,
+                  "head": "7015294225f8edcfe1e14a9afe464f18d63dd7c3",
+              },
+              "szl-holdings/lambda-gate-holo": {
+                  "pr": 8,
+                  "head": "a907f9c012154511459cfc56d55fbbb6f0ff7b1e",
+              },
+          }
+
+          manifest_path = Path(".github/release-boundary/manifest.json")
+          fixture_path = Path(".github/scripts/test_release_boundary.py")
+          workflow_path = Path(
+              ".github/workflows/patch-postmerge-inventory-heads-20260828.yml"
+          )
+
+          def request_json(path: str) -> object:
+              request = urllib.request.Request(
+                  API_ROOT + path,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "User-Agent": "szl-doctrine-exact-head-authorizer/1",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  if response.status != 200:
+                      raise RuntimeError(f"GitHub API returned {response.status} for {path}")
+                  return json.load(response)
+
+          def exact_file_bytes(repository: str, revision: str, path: str) -> bytes:
+              encoded_path = urllib.parse.quote(path, safe="/")
+              encoded_ref = urllib.parse.quote(revision, safe="")
+              payload = request_json(
+                  f"/repos/{repository}/contents/{encoded_path}?ref={encoded_ref}"
+              )
+              if not isinstance(payload, dict):
+                  raise RuntimeError(f"non-object contents response for {repository}:{path}")
+              if payload.get("type") != "file" or payload.get("encoding") != "base64":
+                  raise RuntimeError(f"non-file contents response for {repository}:{path}")
+              content = payload.get("content")
+              if not isinstance(content, str):
+                  raise RuntimeError(f"missing base64 content for {repository}:{path}")
+              return base64.b64decode(content, validate=False)
+
+          def object_span(text: str, key: str) -> tuple[int, int]:
+              marker = json.dumps(key) + ":"
+              marker_index = text.index(marker)
+              start = text.index("{", marker_index + len(marker))
+              depth = 0
+              in_string = False
+              escaped = False
+              for index in range(start, len(text)):
+                  char = text[index]
+                  if in_string:
+                      if escaped:
+                          escaped = False
+                      elif char == "\\":
+                          escaped = True
+                      elif char == '"':
+                          in_string = False
+                      continue
+                  if char == '"':
+                      in_string = True
+                  elif char == "{":
+                      depth += 1
+                  elif char == "}":
+                      depth -= 1
+                      if depth == 0:
+                          return start, index + 1
+              raise RuntimeError(f"unterminated target object for {key}")
+
+          def replace_field(block: str, field: str, old: str, new: str) -> str:
+              if old == new:
+                  return block
+              pattern = re.compile(
+                  r'("' + re.escape(field) + r'"\s*:\s*")'
+                  + re.escape(old)
+                  + r'(")'
+              )
+              replaced, count = pattern.subn(r"\g<1>" + new + r"\g<2>", block)
+              if count != 1:
+                  raise RuntimeError(
+                      f"expected one exact {field}={old} field, replaced {count}"
+                  )
+              return replaced
+
+          raw_manifest = manifest_path.read_text(encoding="utf-8")
+          parsed_manifest = json.loads(raw_manifest)
+          if parsed_manifest.get("schema") != "szl.release-boundary-manifest/v1":
+              raise RuntimeError("unexpected release-boundary manifest schema")
+          manifest_targets = parsed_manifest.get("targets")
+          if not isinstance(manifest_targets, dict):
+              raise RuntimeError("manifest targets are missing")
+
+          old_heads: dict[str, str] = {}
+          patched_manifest = raw_manifest
+          for repository, spec in TARGETS.items():
+              head = spec["head"]
+              pr_number = spec["pr"]
+              target = manifest_targets.get(repository)
+              if not isinstance(target, dict):
+                  raise RuntimeError(f"missing manifest target {repository}")
+
+              repository_payload = request_json(f"/repos/{repository}")
+              if not isinstance(repository_payload, dict):
+                  raise RuntimeError(f"missing repository payload for {repository}")
+              if repository_payload.get("id") != target.get("repository_id"):
+                  raise RuntimeError(f"repository identity drift for {repository}")
+
+              pr = request_json(f"/repos/{repository}/pulls/{pr_number}")
+              if not isinstance(pr, dict):
+                  raise RuntimeError(f"missing pull request payload for {repository}#{pr_number}")
+              pr_head = pr.get("head") if isinstance(pr.get("head"), dict) else {}
+              pr_base = pr.get("base") if isinstance(pr.get("base"), dict) else {}
+              pr_head_repo = (
+                  pr_head.get("repo") if isinstance(pr_head.get("repo"), dict) else {}
+              )
+              if (
+                  pr.get("state") != "open"
+                  or pr_base.get("ref") != "main"
+                  or pr_head.get("sha") != head
+                  or pr_head_repo.get("full_name") != repository
+              ):
+                  raise RuntimeError(f"exact PR/head/base binding failed for {repository}")
+
+              commit = request_json(f"/repos/{repository}/commits/{head}")
+              if not isinstance(commit, dict) or commit.get("sha") != head:
+                  raise RuntimeError(f"exact commit readback failed for {repository}")
+
+              old_head = target.get("observed_candidate_sha")
+              if not isinstance(old_head, str) or len(old_head) != 40:
+                  raise RuntimeError(f"invalid prior observed head for {repository}")
+              old_heads[repository] = old_head
+
+              start, end = object_span(patched_manifest, repository)
+              block = patched_manifest[start:end]
+              block = replace_field(block, "observed_candidate_sha", old_head, head)
+
+              for section_name in ("workflow_files", "secret_execution_files"):
+                  section = target.get(section_name)
+                  if not isinstance(section, dict) or not section:
+                      raise RuntimeError(f"invalid {section_name} for {repository}")
+                  for path, old_digest in section.items():
+                      if not isinstance(path, str) or not isinstance(old_digest, str):
+                          raise RuntimeError(f"invalid protected file entry for {repository}")
+                      digest = hashlib.sha256(
+                          exact_file_bytes(repository, head, path)
+                      ).hexdigest()
+                      block = replace_field(block, path, old_digest, digest)
+
+              patched_manifest = patched_manifest[:start] + block + patched_manifest[end:]
+
+          reparsed = json.loads(patched_manifest)
+          for repository, spec in TARGETS.items():
+              target = reparsed["targets"][repository]
+              if target["observed_candidate_sha"] != spec["head"]:
+                  raise RuntimeError(f"manifest head did not converge for {repository}")
+              for section_name in ("workflow_files", "secret_execution_files"):
+                  for path, digest in target[section_name].items():
+                      measured = hashlib.sha256(
+                          exact_file_bytes(repository, spec["head"], path)
+                      ).hexdigest()
+                      if digest != measured:
+                          raise RuntimeError(
+                              f"manifest digest did not converge for {repository}:{path}"
+                          )
+          manifest_path.write_text(patched_manifest, encoding="utf-8", newline="")
+
+          fixture_text = fixture_path.read_text(encoding="utf-8")
+          method = (
+              "    def test_repository_manifest_activates_exact_signed_successor_heads(self) -> None:\n"
+          )
+          method_start = fixture_text.index(method)
+          next_method = fixture_text.index("\n    def ", method_start + len(method))
+          method_block = fixture_text[method_start:next_method]
+          for repository, spec in TARGETS.items():
+              old_literal = f'"{repository}": "{old_heads[repository]}"'
+              new_literal = f'"{repository}": "{spec["head"]}"'
+              if method_block.count(old_literal) != 1 or new_literal in method_block:
+                  raise RuntimeError(f"fixture identity drift for {repository}")
+              method_block = method_block.replace(old_literal, new_literal, 1)
+          patched_fixture = (
+              fixture_text[:method_start] + method_block + fixture_text[next_method:]
+          )
+          if len(patched_fixture) != len(fixture_text):
+              raise RuntimeError("fixture byte length changed unexpectedly")
+          fixture_path.write_text(patched_fixture, encoding="utf-8", newline="")
+
+          if not workflow_path.is_file():
+              raise RuntimeError("self-deleting doctrine bootstrap is missing")
+          PY
+
+          BOUNDARY_VENV="$RUNNER_TEMP/release-boundary-heads-venv"
+          test ! -e "$BOUNDARY_VENV"
+          python -I -m venv "$BOUNDARY_VENV"
+          BOUNDARY_PYTHON="$BOUNDARY_VENV/bin/python"
+          "$BOUNDARY_PYTHON" -I -m pip install --disable-pip-version-check \
+            --require-hashes --only-binary=:all: --ignore-installed \
+            -r .github/requirements/release-boundary.lock
+          "$BOUNDARY_PYTHON" -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --validate-manifest-only
+          "$BOUNDARY_PYTHON" -I .github/scripts/test_release_boundary.py -v
+          git diff --check
+
+          git rm .github/workflows/patch-postmerge-inventory-heads-20260828.yml
+          git add \
+            .github/release-boundary/manifest.json \
+            .github/scripts/test_release_boundary.py
+          test "$(git diff --cached --name-only | wc -l)" -eq 3
+          git diff --cached --name-only
+          git config user.name "Lutar, Stephen P."
+          git config user.email "stephenlutar2@gmail.com"
+          git commit \
+            -m "fix(boundary): authorize exact post-merge inventory heads" \
+            -m "Bind Governed Norm and Lambda Gate to independently recomputed protected publisher bytes, update only their exact-head fixtures, and remove this bounded bootstrap." \
+            -m "Signed-off-by: Lutar, Stephen P. <stephenlutar2@gmail.com>"
+          git push origin HEAD:fix/authorize-postmerge-inventory-heads-20260828
