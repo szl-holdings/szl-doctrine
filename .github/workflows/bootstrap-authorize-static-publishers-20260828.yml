@@ -1,0 +1,229 @@
+name: Bootstrap exact static publisher authorization
+
+on:
+  push:
+    branches:
+      - ops/bootstrap-authorize-static-publishers-20260828
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-authorize-static-publishers-20260828
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    if: github.repository == 'szl-holdings/szl-doctrine' && github.ref == 'refs/heads/ops/bootstrap-authorize-static-publishers-20260828'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout exact bootstrap branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ops/bootstrap-authorize-static-publishers-20260828
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify exact reviewed heads and patch only admitted fields
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -I - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import copy
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+
+          API = "https://api.github.com"
+          TOKEN = os.environ["GITHUB_TOKEN"]
+          MANIFEST_PATH = Path(".github/release-boundary/manifest.json")
+          TARGETS = {
+              "szl-holdings/governed-norm-holo": {
+                  "pr": 5,
+                  "base": "5dd73429780ac105aa971574d938c82c2df129f8",
+                  "head": "0640f18ccdacee915df2538b771d9eb1e4543916",
+                  "test_blob": "752c1b0480908bf9fd42250eadc4d4025209e5ec",
+              },
+              "szl-holdings/lambda-gate-holo": {
+                  "pr": 5,
+                  "base": "c17550f9c61dd2c25ac928218ec34ee47048e67c",
+                  "head": "6e8f50dbec5ff3e6a6b9c82181e233c0198e12cd",
+                  "test_sha256": "52b5b909b8fc185a666144ca29b11fbcccfe836dd3c1f53b40fbf4552c85e6dd",
+              },
+          }
+          PROTECTED_PATHS = (
+              "scripts/hf_static_space.py",
+              "tests/test_hf_static_space.py",
+          )
+          SCRIPT_BLOB = "f20a305b8ae23d12aaed38eca3ca1d3cb0c42e48"
+          SCRIPT_SHA256 = "904805062a693fe7de0410895aba4a875092e434e78ee972d9c53b097482afff"
+
+          def api(path: str):
+              request = Request(
+                  API + path,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {TOKEN}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "szl-doctrine-exact-publisher-authorizer",
+                  },
+              )
+              with urlopen(request, timeout=30) as response:
+                  if response.status != 200:
+                      raise RuntimeError(f"GET {path} returned HTTP {response.status}")
+                  return json.loads(response.read().decode("utf-8"))
+
+          def fetch_file(repo: str, path: str, ref: str) -> tuple[bytes, str]:
+              encoded_repo = quote(repo, safe="/")
+              encoded_path = quote(path, safe="/")
+              payload = api(f"/repos/{encoded_repo}/contents/{encoded_path}?ref={ref}")
+              if payload.get("type") != "file" or payload.get("encoding") != "base64":
+                  raise RuntimeError(f"{repo}@{ref}:{path} was not a base64 file")
+              content = payload.get("content")
+              blob = payload.get("sha")
+              if not isinstance(content, str) or not isinstance(blob, str):
+                  raise RuntimeError(f"{repo}@{ref}:{path} lacked content/blob identity")
+              return base64.b64decode(content, validate=False), blob
+
+          original_text = MANIFEST_PATH.read_text(encoding="utf-8")
+          original = json.loads(original_text)
+          patched_expected = copy.deepcopy(original)
+          observed: dict[str, dict[str, str]] = {}
+          script_bytes: bytes | None = None
+
+          for repo, contract in TARGETS.items():
+              encoded_repo = quote(repo, safe="/")
+              metadata = api(f"/repos/{encoded_repo}")
+              entry = original["targets"][repo]
+              if metadata.get("id") != entry.get("repository_id"):
+                  raise RuntimeError(f"{repo} repository ID drift")
+              if entry.get("observed_candidate_sha") != contract["base"]:
+                  raise RuntimeError(f"{repo} manifest base drift")
+
+              pr = api(f"/repos/{encoded_repo}/pulls/{contract['pr']}")
+              if pr.get("state") != "open":
+                  raise RuntimeError(f"{repo} PR is not open")
+              if pr.get("base", {}).get("sha") != contract["base"]:
+                  raise RuntimeError(f"{repo} PR base drift")
+              if pr.get("head", {}).get("sha") != contract["head"]:
+                  raise RuntimeError(f"{repo} PR head drift")
+              if pr.get("head", {}).get("repo", {}).get("full_name") != repo:
+                  raise RuntimeError(f"{repo} PR head repository drift")
+
+              comparison = api(
+                  f"/repos/{encoded_repo}/compare/{contract['base']}...{contract['head']}"
+              )
+              changed = [item.get("filename") for item in comparison.get("files", [])]
+              if comparison.get("status") != "ahead" or comparison.get("total_commits") != 1:
+                  raise RuntimeError(f"{repo} did not remain a one-commit forward transition")
+              if changed != list(PROTECTED_PATHS):
+                  raise RuntimeError(f"{repo} changed paths drifted: {changed!r}")
+
+              commit = api(f"/repos/{encoded_repo}/commits/{contract['head']}")
+              verification = commit.get("commit", {}).get("verification", {})
+              if verification.get("verified") is not True or verification.get("reason") != "valid":
+                  raise RuntimeError(f"{repo} exact head is not GitHub-verified")
+              message = commit.get("commit", {}).get("message", "")
+              if not any(line.startswith("Signed-off-by: ") for line in message.splitlines()):
+                  raise RuntimeError(f"{repo} exact head lacks a DCO trailer")
+
+              hashes: dict[str, str] = {}
+              for path in PROTECTED_PATHS:
+                  raw, blob = fetch_file(repo, path, contract["head"])
+                  digest = hashlib.sha256(raw).hexdigest()
+                  hashes[path] = digest
+                  if path == "scripts/hf_static_space.py":
+                      if blob != SCRIPT_BLOB or digest != SCRIPT_SHA256:
+                          raise RuntimeError(f"{repo} publisher script identity drift")
+                      if script_bytes is None:
+                          script_bytes = raw
+                      elif script_bytes != raw:
+                          raise RuntimeError("publisher scripts are no longer byte-identical")
+                  elif repo.endswith("governed-norm-holo"):
+                      if blob != contract["test_blob"]:
+                          raise RuntimeError(f"{repo} test blob identity drift")
+                  elif digest != contract["test_sha256"]:
+                      raise RuntimeError(f"{repo} test SHA-256 identity drift")
+
+              observed[repo] = hashes
+              patched_expected["targets"][repo]["observed_candidate_sha"] = contract["head"]
+              for path, digest in hashes.items():
+                  patched_expected["targets"][repo]["secret_execution_files"][path] = digest
+
+          target_line = re.compile(
+              r'(?m)^(?P<indent>[ \t]+)"(?P<repo>szl-holdings/[^"]+)"\s*:\s*\{\s*$'
+          )
+
+          def replace_keyed_value(block: str, key: str, old: str, new: str) -> str:
+              pattern = re.compile(
+                  rf'("{re.escape(key)}"\s*:\s*")([0-9a-f]{{{len(old)}}})(")'
+              )
+              matches = list(pattern.finditer(block))
+              if len(matches) != 1 or matches[0].group(2) != old:
+                  raise RuntimeError(f"could not uniquely bind {key}={old}")
+              return pattern.sub(lambda m: m.group(1) + new + m.group(3), block, count=1)
+
+          patched_text = original_text
+          for repo, contract in TARGETS.items():
+              matches = list(target_line.finditer(patched_text))
+              index = next((i for i, match in enumerate(matches) if match.group("repo") == repo), None)
+              if index is None:
+                  raise RuntimeError(f"could not locate target block for {repo}")
+              start = matches[index].start()
+              end = matches[index + 1].start() if index + 1 < len(matches) else len(patched_text)
+              block = patched_text[start:end]
+              entry = original["targets"][repo]
+              block = replace_keyed_value(
+                  block,
+                  "observed_candidate_sha",
+                  entry["observed_candidate_sha"],
+                  contract["head"],
+              )
+              for path in PROTECTED_PATHS:
+                  block = replace_keyed_value(
+                      block,
+                      path,
+                      entry["secret_execution_files"][path],
+                      observed[repo][path],
+                  )
+              patched_text = patched_text[:start] + block + patched_text[end:]
+
+          patched = json.loads(patched_text)
+          if patched != patched_expected:
+              raise RuntimeError("semantic diff exceeded the six admitted values")
+          if len(patched_text) != len(original_text):
+              raise RuntimeError("manifest byte length changed unexpectedly")
+          MANIFEST_PATH.write_text(patched_text, encoding="utf-8", newline="")
+
+          for repo in TARGETS:
+              print(repo, TARGETS[repo]["head"], observed[repo])
+          PY
+
+          python -I -m json.tool .github/release-boundary/manifest.json >/dev/null
+          git diff --check
+          git rm .github/workflows/bootstrap-authorize-static-publishers-20260828.yml
+          git add .github/release-boundary/manifest.json
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          git diff --cached --name-only
+          git config user.name "Lutar, Stephen P."
+          git config user.email "stephenlutar2@gmail.com"
+          git commit \
+            -m "fix(boundary): authorize exact static publisher heads" \
+            -m "Bind the two reviewed protected publisher transitions to their independently recomputed file digests without changing any unrelated target or policy field." \
+            -m "Signed-off-by: Lutar, Stephen P. <stephenlutar2@gmail.com>"
+          git push origin HEAD:ops/bootstrap-authorize-static-publishers-20260828
