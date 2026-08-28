@@ -265,8 +265,8 @@ class BoundaryTests(unittest.TestCase):
             {name: item["observed_candidate_sha"] for name, item in manifest["targets"].items() if item["state"] == "ACTIVE"},
             {
                 "szl-holdings/energy-attest-holo": "6851c00110b275d8207c8038ffc78886cdff55fb",
-                "szl-holdings/governed-norm-holo": "0640f18ccdacee915df2538b771d9eb1e4543916",
-                "szl-holdings/lambda-gate-holo": "6e8f50dbec5ff3e6a6b9c82181e233c0198e12cd",
+                "szl-holdings/governed-norm-holo": "7015294225f8edcfe1e14a9afe464f18d63dd7c3",
+                "szl-holdings/lambda-gate-holo": "a907f9c012154511459cfc56d55fbbb6f0ff7b1e",
                 "szl-holdings/receipt-chain-live": "787891967b412fd3211856ffc0b2e6e4bf6da205",
                 "szl-holdings/szl-kernels-live": "6c48224a8e8a4ddd05b8e1e46b4948a61634ee66",
                 "szl-holdings/szl-provctl-live": "bf0903cdad0a78d06542fd5457db8d1daf82ea43",

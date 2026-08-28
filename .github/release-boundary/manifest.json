@@ -110,7 +110,7 @@
                     "szl-holdings/governed-norm-holo":  {
                                                             "repository_id":  1295931607,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "0640f18ccdacee915df2538b771d9eb1e4543916",
+                                                            "observed_candidate_sha":  "7015294225f8edcfe1e14a9afe464f18d63dd7c3",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
                                                                                    ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
@@ -119,8 +119,8 @@
                                                                                            ".hf-space.json":  "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
                                                                                            "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                            "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                           "scripts/hf_static_space.py":  "904805062a693fe7de0410895aba4a875092e434e78ee972d9c53b097482afff",
-                                                                                           "tests/test_hf_static_space.py":  "9e6667ccb957dae8a6509903d9b100933935ca12d595b27f9f40dce405c4c116"
+                                                                                           "scripts/hf_static_space.py":  "8f8acc17d7ecc1894c7e4424ceea166b6315161cc7445ffa9680ef2822012625",
+                                                                                           "tests/test_hf_static_space.py":  "3c10419c25c38b507f18703b6929bb7e699ae0f4c3b0acf19a93592bbf1642aa"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
@@ -215,7 +215,7 @@
                     "szl-holdings/lambda-gate-holo":  {
                                                           "repository_id":  1295931629,
                                                           "state":  "ACTIVE",
-                                                          "observed_candidate_sha":  "6e8f50dbec5ff3e6a6b9c82181e233c0198e12cd",
+                                                          "observed_candidate_sha":  "a907f9c012154511459cfc56d55fbbb6f0ff7b1e",
                                                           "pending_reason":  null,
                                                           "workflow_files":  {
                                                                                  ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
@@ -224,8 +224,8 @@
                                                                                          ".hf-space.json":  "fcf3b6356a95d8b6f8cc6a69d94e919217def91c990c3aacbba1f7d3d236dc16",
                                                                                          "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                          "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                         "scripts/hf_static_space.py":  "904805062a693fe7de0410895aba4a875092e434e78ee972d9c53b097482afff",
-                                                                                         "tests/test_hf_static_space.py":  "52b5b909b8fc185a666144ca29b11fbcccfe836dd3c1f53b40fbf4552c85e6dd"
+                                                                                         "scripts/hf_static_space.py":  "8f8acc17d7ecc1894c7e4424ceea166b6315161cc7445ffa9680ef2822012625",
+                                                                                         "tests/test_hf_static_space.py":  "3c10419c25c38b507f18703b6929bb7e699ae0f4c3b0acf19a93592bbf1642aa"
                                                                                      },
                                                           "mutable_public_assets":  [
                                                                                         "LICENSE",
