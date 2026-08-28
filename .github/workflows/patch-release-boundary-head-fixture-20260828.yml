@@ -1,0 +1,93 @@
+name: Patch exact release-boundary head fixture
+
+on:
+  push:
+    branches:
+      - fix/authorize-static-publisher-heads-20260828
+
+permissions:
+  contents: write
+
+concurrency:
+  group: patch-release-boundary-head-fixture-20260828
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    if: github.repository == 'szl-holdings/szl-doctrine' && github.ref == 'refs/heads/fix/authorize-static-publisher-heads-20260828'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout exact repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/authorize-static-publisher-heads-20260828
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12.13'
+
+      - name: Patch only stale head expectations and prove source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -I - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/test_release_boundary.py')
+          text = path.read_text(encoding='utf-8')
+          method = '    def test_repository_manifest_activates_exact_signed_successor_heads(self) -> None:\n'
+          start = text.index(method)
+          next_method = text.index('\n    def ', start + len(method))
+          block = text[start:next_method]
+          replacements = {
+              '"szl-holdings/governed-norm-holo": "5dd73429780ac105aa971574d938c82c2df129f8"':
+                  '"szl-holdings/governed-norm-holo": "0640f18ccdacee915df2538b771d9eb1e4543916"',
+              '"szl-holdings/lambda-gate-holo": "c17550f9c61dd2c25ac928218ec34ee47048e67c"':
+                  '"szl-holdings/lambda-gate-holo": "6e8f50dbec5ff3e6a6b9c82181e233c0198e12cd"',
+          }
+          for old, new in replacements.items():
+              if block.count(old) != 1 or new in block:
+                  raise RuntimeError(f'fixture identity drift for {old}')
+              block = block.replace(old, new, 1)
+          patched = text[:start] + block + text[next_method:]
+          if len(patched) != len(text):
+              raise RuntimeError('fixture byte length changed unexpectedly')
+          if patched.count('0640f18ccdacee915df2538b771d9eb1e4543916') != text.count('0640f18ccdacee915df2538b771d9eb1e4543916') + 1:
+              raise RuntimeError('governed-norm head replacement exceeded scope')
+          if patched.count('6e8f50dbec5ff3e6a6b9c82181e233c0198e12cd') != text.count('6e8f50dbec5ff3e6a6b9c82181e233c0198e12cd') + 1:
+              raise RuntimeError('lambda-gate head replacement exceeded scope')
+          path.write_text(patched, encoding='utf-8', newline='')
+          PY
+
+          BOUNDARY_VENV="$RUNNER_TEMP/release-boundary-fixture-venv"
+          test ! -e "$BOUNDARY_VENV"
+          python -I -m venv "$BOUNDARY_VENV"
+          BOUNDARY_PYTHON="$BOUNDARY_VENV/bin/python"
+          "$BOUNDARY_PYTHON" -I -m pip install --disable-pip-version-check \
+            --require-hashes --only-binary=:all: --ignore-installed \
+            -r .github/requirements/release-boundary.lock
+          "$BOUNDARY_PYTHON" -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --validate-manifest-only
+          "$BOUNDARY_PYTHON" -I .github/scripts/test_release_boundary.py -v
+          git diff --check
+          git rm .github/workflows/patch-release-boundary-head-fixture-20260828.yml
+          git add .github/scripts/test_release_boundary.py
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          git diff --cached --name-only
+          git config user.name "Lutar, Stephen P."
+          git config user.email "stephenlutar2@gmail.com"
+          git commit \
+            -m "test(boundary): converge exact authorized heads" \
+            -m "Update only the two stale successor-head expectations after independently binding their protected publisher bytes in the manifest." \
+            -m "Signed-off-by: Lutar, Stephen P. <stephenlutar2@gmail.com>"
+          git push origin HEAD:fix/authorize-static-publisher-heads-20260828
