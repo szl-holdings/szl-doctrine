@@ -1,0 +1,223 @@
+name: Authorize exact Governed Norm publisher rebind
+
+on:
+  push:
+    branches:
+      - fix/authorize-governed-norm-rebind-20260829
+
+permissions:
+  contents: write
+
+concurrency:
+  group: authorize-governed-norm-rebind-20260829
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact doctrine branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12.13'
+          check-latest: false
+
+      - name: Recompute exact protected publisher identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -I - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+          import re
+          import urllib.parse
+          import urllib.request
+
+          API_ROOT = "https://api.github.com"
+          REPOSITORY = "szl-holdings/governed-norm-holo"
+          REPOSITORY_ID = 1295931607
+          PR_NUMBER = 8
+          HEAD = "345108f6c8c8da2617adaadd432eef237dc8482e"
+
+          manifest_path = Path(".github/release-boundary/manifest.json")
+          fixture_path = Path(".github/scripts/test_release_boundary.py")
+
+          def request_json(path: str) -> object:
+              request = urllib.request.Request(
+                  API_ROOT + path,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "User-Agent": "szl-doctrine-governed-norm-authorizer/1",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  if response.status != 200:
+                      raise RuntimeError(f"GitHub API returned {response.status} for {path}")
+                  return json.load(response)
+
+          def exact_file_bytes(path: str) -> bytes:
+              encoded_path = urllib.parse.quote(path, safe="/")
+              payload = request_json(
+                  f"/repos/{REPOSITORY}/contents/{encoded_path}?ref={HEAD}"
+              )
+              if not isinstance(payload, dict):
+                  raise RuntimeError(f"non-object contents response for {path}")
+              if payload.get("type") != "file" or payload.get("encoding") != "base64":
+                  raise RuntimeError(f"non-file contents response for {path}")
+              content = payload.get("content")
+              if not isinstance(content, str):
+                  raise RuntimeError(f"missing content for {path}")
+              return base64.b64decode("".join(content.split()), validate=True)
+
+          def object_span(text: str, key: str) -> tuple[int, int]:
+              marker = json.dumps(key) + ":"
+              marker_index = text.index(marker)
+              start = text.index("{", marker_index + len(marker))
+              depth = 0
+              in_string = False
+              escaped = False
+              for index in range(start, len(text)):
+                  char = text[index]
+                  if in_string:
+                      if escaped:
+                          escaped = False
+                      elif char == "\\":
+                          escaped = True
+                      elif char == '"':
+                          in_string = False
+                      continue
+                  if char == '"':
+                      in_string = True
+                  elif char == "{":
+                      depth += 1
+                  elif char == "}":
+                      depth -= 1
+                      if depth == 0:
+                          return start, index + 1
+              raise RuntimeError("unterminated target object")
+
+          def replace_field(block: str, field: str, old: str, new: str) -> str:
+              pattern = re.compile(
+                  r'("' + re.escape(field) + r'"\s*:\s*")'
+                  + re.escape(old)
+                  + r'(")'
+              )
+              replaced, count = pattern.subn(r"\g<1>" + new + r"\g<2>", block)
+              if count != 1:
+                  raise RuntimeError(
+                      f"expected one exact {field}={old} field, replaced {count}"
+                  )
+              return replaced
+
+          repository_payload = request_json(f"/repos/{REPOSITORY}")
+          if not isinstance(repository_payload, dict) or repository_payload.get("id") != REPOSITORY_ID:
+              raise RuntimeError("repository identity drift")
+
+          pr = request_json(f"/repos/{REPOSITORY}/pulls/{PR_NUMBER}")
+          head = pr.get("head") if isinstance(pr, dict) else None
+          base = pr.get("base") if isinstance(pr, dict) else None
+          head_repo = head.get("repo") if isinstance(head, dict) else None
+          if (
+              not isinstance(pr, dict)
+              or pr.get("state") != "open"
+              or not isinstance(head, dict)
+              or head.get("sha") != HEAD
+              or not isinstance(head_repo, dict)
+              or head_repo.get("full_name") != REPOSITORY
+              or not isinstance(base, dict)
+              or base.get("ref") != "main"
+          ):
+              raise RuntimeError("exact PR/head/base binding failed")
+
+          commit = request_json(f"/repos/{REPOSITORY}/commits/{HEAD}")
+          if not isinstance(commit, dict) or commit.get("sha") != HEAD:
+              raise RuntimeError("exact commit readback failed")
+
+          raw = manifest_path.read_text(encoding="utf-8")
+          parsed = json.loads(raw)
+          target = parsed.get("targets", {}).get(REPOSITORY)
+          if not isinstance(target, dict) or target.get("repository_id") != REPOSITORY_ID:
+              raise RuntimeError("manifest target identity drift")
+          old_head = target.get("observed_candidate_sha")
+          if not isinstance(old_head, str) or len(old_head) != 40:
+              raise RuntimeError("prior observed candidate is malformed")
+
+          start, end = object_span(raw, REPOSITORY)
+          block = raw[start:end]
+          block = replace_field(block, "observed_candidate_sha", old_head, HEAD)
+          for section_name in ("workflow_files", "secret_execution_files"):
+              section = target.get(section_name)
+              if not isinstance(section, dict) or not section:
+                  raise RuntimeError(f"invalid {section_name}")
+              for path, old_digest in section.items():
+                  if not isinstance(path, str) or not isinstance(old_digest, str):
+                      raise RuntimeError(f"invalid protected entry in {section_name}")
+                  digest = hashlib.sha256(exact_file_bytes(path)).hexdigest()
+                  block = replace_field(block, path, old_digest, digest)
+
+          patched = raw[:start] + block + raw[end:]
+          reparsed = json.loads(patched)
+          rebound = reparsed["targets"][REPOSITORY]
+          if rebound["observed_candidate_sha"] != HEAD:
+              raise RuntimeError("manifest head did not converge")
+          for section_name in ("workflow_files", "secret_execution_files"):
+              for path, digest in rebound[section_name].items():
+                  measured = hashlib.sha256(exact_file_bytes(path)).hexdigest()
+                  if digest != measured:
+                      raise RuntimeError(f"digest did not converge for {path}")
+          manifest_path.write_text(patched, encoding="utf-8", newline="")
+
+          fixture = fixture_path.read_text(encoding="utf-8")
+          old_literal = f'"{REPOSITORY}": "{old_head}"'
+          new_literal = f'"{REPOSITORY}": "{HEAD}"'
+          if fixture.count(old_literal) != 1 or new_literal in fixture:
+              raise RuntimeError("exact-head fixture identity drift")
+          fixture_path.write_text(
+              fixture.replace(old_literal, new_literal, 1),
+              encoding="utf-8",
+              newline="",
+          )
+          PY
+
+          BOUNDARY_VENV="$RUNNER_TEMP/release-boundary-venv"
+          python -I -m venv "$BOUNDARY_VENV"
+          BOUNDARY_PYTHON="$BOUNDARY_VENV/bin/python"
+          "$BOUNDARY_PYTHON" -I -m pip install --disable-pip-version-check \
+            --require-hashes --only-binary=:all: --ignore-installed \
+            -r .github/requirements/release-boundary.lock
+          "$BOUNDARY_PYTHON" -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --validate-manifest-only
+          "$BOUNDARY_PYTHON" -I .github/scripts/test_release_boundary.py -v
+          git diff --check
+
+      - name: Commit exact doctrine binding and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/zz-authorize-governed-norm-rebind.yml
+          git add \
+            .github/release-boundary/manifest.json \
+            .github/scripts/test_release_boundary.py
+          git diff --cached --check
+          git config user.name 'Lutar, Stephen P.'
+          git config user.email 'stephenlutar2@gmail.com'
+          git commit \
+            -m 'fix(boundary): authorize Governed Norm public rebind' \
+            -m 'Bind the exact open Governed Norm head to independently recomputed protected publisher bytes, update its exact-head contract fixture, and remove this bounded authorizer.' \
+            -m 'Signed-off-by: Lutar, Stephen P. <stephenlutar2@gmail.com>'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
