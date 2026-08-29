@@ -110,7 +110,7 @@
                     "szl-holdings/governed-norm-holo":  {
                                                             "repository_id":  1295931607,
                                                             "state":  "ACTIVE",
-                                                            "observed_candidate_sha":  "7015294225f8edcfe1e14a9afe464f18d63dd7c3",
+                                                            "observed_candidate_sha":  "345108f6c8c8da2617adaadd432eef237dc8482e",
                                                             "pending_reason":  null,
                                                             "workflow_files":  {
                                                                                    ".github/workflows/hf-static-space.yml":  "013300f7d0c94e09b7217dbd3d7bc300dacc18f26ab1f77d70ec410de466d6e1"
@@ -119,8 +119,8 @@
                                                                                            ".hf-space.json":  "639a119611db65144793a373098512f0bf6270fa349610412289cc984d2863f8",
                                                                                            "requirements/hf-publisher.lock":  "4ed724b15a2bbb8291b4e22ef6dd18d5a4ef181013133f0f674fbd62e37cc471",
                                                                                            "requirements/hf-validator.lock":  "f30685e09a7023e715f064630cd9240d17652ea8defc408932bc29862aa598d1",
-                                                                                           "scripts/hf_static_space.py":  "8f8acc17d7ecc1894c7e4424ceea166b6315161cc7445ffa9680ef2822012625",
-                                                                                           "tests/test_hf_static_space.py":  "3c10419c25c38b507f18703b6929bb7e699ae0f4c3b0acf19a93592bbf1642aa"
+                                                                                           "scripts/hf_static_space.py":  "acc5fe8c9f9b84b52ca672b3643c86313d04c468e809dffb7b5c00564aa8b027",
+                                                                                           "tests/test_hf_static_space.py":  "41462ec2630a7eb988284b81433a9b3f26e2b0e2a6f88ec4fa5cc1957bec1e28"
                                                                                        },
                                                             "mutable_public_assets":  [
                                                                                           "LICENSE",
