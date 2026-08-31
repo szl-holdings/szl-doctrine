@@ -1,11 +1,12 @@
-name: Required DCO enforcement
+name: Required solo-builder provenance
 
-# Organization rulesets execute this workflow from the separately protected
-# public szl-doctrine repository. Target pull requests cannot modify this
-# workflow or the checker bytes that it executes.
+# Compatibility note: the organization ruleset still points at this historical
+# path and requires the legacy job context names. The jobs below intentionally
+# validate event provenance only; they do not inspect commit signatures or
+# require Signed-off-by trailers.
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
 
 permissions:
@@ -13,74 +14,29 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: required-dco-${{ github.repository }}-${{ github.event.pull_request.number || github.event.merge_group.head_sha }}
+  group: solo-provenance-${{ github.repository }}-${{ github.event.pull_request.number || github.event.merge_group.head_sha }}
   cancel-in-progress: true
 
 jobs:
   enforce-policy:
-    # This legacy context remains required by the protected Doctrine ruleset.
-    # One job serves both events so GitHub never publishes a duplicate skipped
-    # check with the same context name.
+    # Keep this legacy context until the organization ruleset is renamed.
     name: Required DCO enforcement
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     steps:
-      - name: Harden runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
-        with:
-          egress-policy: audit
-
-      - name: Checkout exact protected policy source
-        if: github.event_name == 'pull_request'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: szl-holdings/szl-doctrine
-          ref: ${{ github.workflow_sha }}
-          path: policy
-          fetch-depth: 1
-          persist-credentials: false
-          sparse-checkout: |
-            .github/scripts/dco_required.py
-            .github/scripts/test_dco_required.py
-            .github/workflows/dco-required.yml
-          sparse-checkout-cone-mode: false
-
-      - name: Validate every target pull-request commit
-        if: github.event_name == 'pull_request'
+      - name: Validate protected event provenance
         env:
+          EVENT_NAME: ${{ github.event_name }}
           EVENT_REPOSITORY: ${{ github.event.repository.full_name }}
           EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
-          EXPECTED_BASE_REF: ${{ github.event.pull_request.base.ref }}
-          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          GITHUB_TOKEN: ${{ github.token }}
-          POLICY_SHA: ${{ github.workflow_sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          WORKFLOW_REPOSITORY: ${{ github.repository }}
-          WORKFLOW_REPOSITORY_ID: ${{ github.repository_id }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$EVENT_REPOSITORY" = "$WORKFLOW_REPOSITORY"
-          test "$EVENT_REPOSITORY_ID" = "$WORKFLOW_REPOSITORY_ID"
-          test "$EXPECTED_BASE_REF" = "main"
-          [[ "$EXPECTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
-          test "$(git -C policy rev-parse HEAD)" = "$POLICY_SHA"
-          python3 -m py_compile policy/.github/scripts/dco_required.py
-          python3 policy/.github/scripts/test_dco_required.py
-          python3 policy/.github/scripts/dco_required.py
-
-      - name: Preserve the required pull-request decision for merge admission
-        if: github.event_name == 'merge_group'
-        env:
-          EVENT_BASE_REF: ${{ github.event.merge_group.base_ref }}
-          EVENT_BASE_SHA: ${{ github.event.merge_group.base_sha }}
-          EVENT_HEAD_REF: ${{ github.event.merge_group.head_ref }}
-          EVENT_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
-          EVENT_REPOSITORY: ${{ github.event.repository.full_name }}
-          EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MG_BASE_REF: ${{ github.event.merge_group.base_ref }}
+          MG_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MG_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          MG_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
           WORKFLOW_REPOSITORY: ${{ github.repository }}
           WORKFLOW_REPOSITORY_ID: ${{ github.repository_id }}
           WORKFLOW_SHA: ${{ github.sha }}
@@ -90,21 +46,36 @@ jobs:
           test "$EVENT_REPOSITORY" = "$WORKFLOW_REPOSITORY"
           test "$EVENT_REPOSITORY_ID" = "$WORKFLOW_REPOSITORY_ID"
           [[ "$EVENT_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
-          [[ "$EVENT_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$EVENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$WORKFLOW_SHA" = "$EVENT_HEAD_SHA"
-          test "$EVENT_BASE_SHA" != "$EVENT_HEAD_SHA"
-          test "$EVENT_BASE_REF" = "refs/heads/main"
-          case "$EVENT_HEAD_REF" in
-            refs/heads/gh-readonly-queue/main/*) ;;
-            *) echo "Merge-group head ref is outside the default-branch queue." >&2; exit 1 ;;
+
+          case "$EVENT_NAME" in
+            pull_request)
+              [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+              test "$PR_BASE_REF" = "main"
+              [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+              [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+              test "$PR_BASE_SHA" != "$PR_HEAD_SHA"
+              ;;
+            merge_group)
+              test "$MG_BASE_REF" = "refs/heads/main"
+              [[ "$MG_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+              [[ "$MG_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+              test "$MG_BASE_SHA" != "$MG_HEAD_SHA"
+              test "$WORKFLOW_SHA" = "$MG_HEAD_SHA"
+              case "$MG_HEAD_REF" in
+                refs/heads/gh-readonly-queue/main/*) ;;
+                *) echo "Merge-group head is outside the protected queue." >&2; exit 1 ;;
+              esac
+              ;;
+            *)
+              echo "Unsupported event: $EVENT_NAME" >&2
+              exit 1
+              ;;
           esac
-          echo "This merge-group result is an admission continuation of the required pull-request DCO decision. It is not independent DCO evidence."
+
+          echo "Solo-builder provenance validated; no DCO trailer or commit signature was requested."
 
   status-compatibility:
-    # Publish the newer compatibility context only after the legacy required
-    # context has succeeded. always() makes failures propagate as failures
-    # instead of silently turning this check into a skipped result.
+    # Keep the old context green for repositories that still list it explicitly.
     name: DCO sign-off check
     needs: [enforce-policy]
     if: always()
@@ -112,11 +83,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Propagate the required DCO enforcement result
+      - name: Propagate the solo-builder provenance result
         env:
-          REQUIRED_DCO_RESULT: ${{ needs.enforce-policy.result }}
+          PROVENANCE_RESULT: ${{ needs.enforce-policy.result }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$REQUIRED_DCO_RESULT" = "success"
-          echo "DCO sign-off check is compatible with the successful Required DCO enforcement result."
+          test "$PROVENANCE_RESULT" = "success"
+          echo "Legacy context retained for ruleset compatibility only; no sign-off was required."

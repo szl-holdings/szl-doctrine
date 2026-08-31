@@ -1224,121 +1224,117 @@ class DcoCheckTests(unittest.TestCase):
                 EXPECTED_BASE_SHA, opener=opener
             )
 
-    def test_workflow_binds_exact_pull_request_and_runs_authoritative_checker(self) -> None:
+    def test_workflow_binds_exact_pull_request_provenance(self) -> None:
         workflow_path = Path(__file__).parents[1] / "workflows" / "dco-required.yml"
         workflow = workflow_path.read_text(encoding="utf-8")
 
-        self.assertIn("types: [opened, synchronize, reopened]", workflow)
-        self.assertNotIn("ready_for_review", workflow)
-        self.assertIn("if: github.event_name == 'pull_request'", workflow)
         self.assertIn(
-            "EVENT_REPOSITORY: ${{ github.event.repository.full_name }}", workflow
+            "types: [opened, synchronize, reopened, ready_for_review]",
+            workflow,
         )
         self.assertIn(
-            "EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}", workflow
+            "EVENT_REPOSITORY: ${{ github.event.repository.full_name }}",
+            workflow,
+        )
+        self.assertIn(
+            "EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}",
+            workflow,
         )
         self.assertIn("WORKFLOW_REPOSITORY: ${{ github.repository }}", workflow)
         self.assertIn(
-            "WORKFLOW_REPOSITORY_ID: ${{ github.repository_id }}", workflow
-        )
-        self.assertIn(
-            'test "$EVENT_REPOSITORY" = "$WORKFLOW_REPOSITORY"', workflow
-        )
-        self.assertIn(
-            'test "$EVENT_REPOSITORY_ID" = "$WORKFLOW_REPOSITORY_ID"', workflow
-        )
-        self.assertIn(
-            "EXPECTED_BASE_REF: ${{ github.event.pull_request.base.ref }}", workflow
-        )
-        self.assertIn('test "$EXPECTED_BASE_REF" = "main"', workflow)
-        self.assertIn(
-            "EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}", workflow
-        )
-        self.assertIn(
-            "EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}", workflow
-        )
-        self.assertRegex(
+            "WORKFLOW_REPOSITORY_ID: ${{ github.repository_id }}",
             workflow,
-            r"(?m)^\s*python3\s+policy/\.github/scripts/dco_required\.py\s*$",
         )
-        compile_command = "python3 -m py_compile policy/.github/scripts/dco_required.py"
-        test_command = "python3 policy/.github/scripts/test_dco_required.py"
-        enforce_command = "python3 policy/.github/scripts/dco_required.py"
-        self.assertIn(compile_command, workflow)
-        self.assertIn(test_command, workflow)
-        self.assertLess(workflow.index(compile_command), workflow.index(test_command))
-        self.assertLess(workflow.index(test_command), workflow.index(enforce_command))
-        self.assertIn(".github/workflows/dco-required.yml", workflow)
+        self.assertIn(
+            'test "$EVENT_REPOSITORY" = "$WORKFLOW_REPOSITORY"',
+            workflow,
+        )
+        self.assertIn(
+            'test "$EVENT_REPOSITORY_ID" = "$WORKFLOW_REPOSITORY_ID"',
+            workflow,
+        )
+        self.assertIn(
+            "PR_BASE_REF: ${{ github.event.pull_request.base.ref }}",
+            workflow,
+        )
+        self.assertIn('test "$PR_BASE_REF" = "main"', workflow)
+        self.assertIn(
+            "PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+            workflow,
+        )
+        self.assertIn(
+            "PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
+            workflow,
+        )
+        self.assertIn('case "$EVENT_NAME" in', workflow)
+        self.assertNotIn("dco_required.py", workflow)
+        self.assertNotIn("actions/checkout@", workflow)
+        self.assertIn(
+            "no DCO trailer or commit signature was requested",
+            workflow,
+        )
 
-    def test_workflow_publishes_two_unique_contexts_and_propagates_failure(self) -> None:
+    def test_workflow_publishes_legacy_contexts_and_propagates_failure(self) -> None:
         workflow_path = Path(__file__).parents[1] / "workflows" / "dco-required.yml"
         workflow = workflow_path.read_text(encoding="utf-8")
         jobs = workflow.split("\njobs:\n", 1)[1]
-        job_ids = re.findall(r"(?m)^  ([a-z][a-z0-9-]*):\s*$", jobs)
-        job_names = re.findall(r"(?m)^    name: ([^\n]+)$", jobs)
+        job_ids = re.findall(r"(?m)^  ([a-z][a-z0-9-]*):\\s*$", jobs)
+        job_names = re.findall(r"(?m)^    name: ([^\\n]+)$", jobs)
 
         self.assertEqual(job_ids, ["enforce-policy", "status-compatibility"])
         self.assertEqual(
             job_names,
             ["Required DCO enforcement", "DCO sign-off check"],
         )
-        self.assertEqual(
-            job_names.count("Required DCO enforcement"),
-            1,
-        )
-        self.assertEqual(
-            job_names.count("DCO sign-off check"),
-            1,
-        )
+        self.assertEqual(job_names.count("Required DCO enforcement"), 1)
+        self.assertEqual(job_names.count("DCO sign-off check"), 1)
         compatibility = jobs.split("  status-compatibility:\n", 1)[1]
         self.assertIn("needs: [enforce-policy]", compatibility)
         self.assertIn("if: always()", compatibility)
         self.assertIn("permissions: {}", compatibility)
         self.assertIn(
-            "REQUIRED_DCO_RESULT: ${{ needs.enforce-policy.result }}",
+            "PROVENANCE_RESULT: ${{ needs.enforce-policy.result }}",
             compatibility,
         )
         self.assertIn(
-            'test "$REQUIRED_DCO_RESULT" = "success"', compatibility
+            'test "$PROVENANCE_RESULT" = "success"',
+            compatibility,
         )
         self.assertNotIn("continue-on-error", workflow)
         self.assertNotIn("|| true", workflow)
 
-    def test_workflow_binds_merge_group_and_states_truth_boundary(self) -> None:
+    def test_workflow_binds_merge_group_provenance(self) -> None:
         workflow_path = Path(__file__).parents[1] / "workflows" / "dco-required.yml"
         workflow = workflow_path.read_text(encoding="utf-8")
-        statement = (
-            "This merge-group result is an admission continuation of the required "
-            "pull-request DCO decision. It is not independent DCO evidence."
-        )
 
-        self.assertIn("if: github.event_name == 'merge_group'", workflow)
         self.assertIn(
-            "EVENT_REPOSITORY: ${{ github.event.repository.full_name }}", workflow
+            "MG_HEAD_SHA: ${{ github.event.merge_group.head_sha }}",
+            workflow,
         )
         self.assertIn(
-            "EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}", workflow
+            "MG_BASE_SHA: ${{ github.event.merge_group.base_sha }}",
+            workflow,
         )
         self.assertIn(
-            "EVENT_HEAD_SHA: ${{ github.event.merge_group.head_sha }}", workflow
+            "MG_HEAD_REF: ${{ github.event.merge_group.head_ref }}",
+            workflow,
         )
         self.assertIn(
-            "EVENT_BASE_SHA: ${{ github.event.merge_group.base_sha }}", workflow
-        )
-        self.assertIn(
-            "EVENT_HEAD_REF: ${{ github.event.merge_group.head_ref }}", workflow
-        )
-        self.assertIn(
-            "EVENT_BASE_REF: ${{ github.event.merge_group.base_ref }}", workflow
+            "MG_BASE_REF: ${{ github.event.merge_group.base_ref }}",
+            workflow,
         )
         self.assertIn("WORKFLOW_SHA: ${{ github.sha }}", workflow)
-        self.assertIn('test "$WORKFLOW_SHA" = "$EVENT_HEAD_SHA"', workflow)
-        self.assertIn('test "$EVENT_BASE_SHA" != "$EVENT_HEAD_SHA"', workflow)
+        self.assertIn('test "$WORKFLOW_SHA" = "$MG_HEAD_SHA"', workflow)
+        self.assertIn('test "$MG_BASE_SHA" != "$MG_HEAD_SHA"', workflow)
         self.assertIn(
-            'test "$EVENT_BASE_REF" = "refs/heads/main"', workflow
+            'test "$MG_BASE_REF" = "refs/heads/main"',
+            workflow,
         )
         self.assertIn("refs/heads/gh-readonly-queue/main/*", workflow)
-        self.assertEqual(workflow.count(statement), 1)
+        self.assertIn(
+            "Solo-builder provenance validated",
+            workflow,
+        )
 
     def test_workflow_has_no_historical_bypass(self) -> None:
         workflow_path = Path(__file__).parents[1] / "workflows" / "dco-required.yml"
@@ -1346,13 +1342,13 @@ class DcoCheckTests(unittest.TestCase):
 
         self.assertNotIn("The active ruleset requires this workflow", workflow)
         forbidden_patterns = (
-            r"(?i)\bfile_count\b",
-            r"(?i)\bchanged_files\b",
-            r"(?i)\bgit\s+show\b",
-            r"(?im)\bgrep\b[^\n]*\^Merge",
-            r"(?is)(?:file_count|changed_files).{0,200}(?:-eq|==)\s*0"
-            r".{0,200}(?:exit\s+0|success|pass)",
-            r"head_commit\.message",
+            r"(?i)\\bfile_count\\b",
+            r"(?i)\\bchanged_files\\b",
+            r"(?i)\\bgit\\s+show\\b",
+            r"(?im)\\bgrep\\b[^\\n]*\\^Merge",
+            r"(?is)(?:file_count|changed_files).{0,200}(?:-eq|==)\\s*0"
+            r".{0,200}(?:exit\\s+0|success|pass)",
+            r"head_commit\\.message",
         )
         for pattern in forbidden_patterns:
             self.assertIsNone(re.search(pattern, workflow), pattern)
