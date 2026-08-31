@@ -1278,8 +1278,8 @@ class DcoCheckTests(unittest.TestCase):
         workflow_path = Path(__file__).parents[1] / "workflows" / "dco-required.yml"
         workflow = workflow_path.read_text(encoding="utf-8")
         jobs = workflow.split("\njobs:\n", 1)[1]
-        job_ids = re.findall(r"(?m)^  ([a-z][a-z0-9-]*):\\s*$", jobs)
-        job_names = re.findall(r"(?m)^    name: ([^\\n]+)$", jobs)
+        job_ids = re.findall(r"(?m)^  ([a-z][a-z0-9-]*):\s*$", jobs)
+        job_names = re.findall(r"(?m)^    name: ([^\n]+)$", jobs)
 
         self.assertEqual(job_ids, ["enforce-policy", "status-compatibility"])
         self.assertEqual(
@@ -1342,16 +1342,34 @@ class DcoCheckTests(unittest.TestCase):
 
         self.assertNotIn("The active ruleset requires this workflow", workflow)
         forbidden_patterns = (
-            r"(?i)\\bfile_count\\b",
-            r"(?i)\\bchanged_files\\b",
-            r"(?i)\\bgit\\s+show\\b",
-            r"(?im)\\bgrep\\b[^\\n]*\\^Merge",
-            r"(?is)(?:file_count|changed_files).{0,200}(?:-eq|==)\\s*0"
-            r".{0,200}(?:exit\\s+0|success|pass)",
-            r"head_commit\\.message",
+            r"(?i)\bfile_count\b",
+            r"(?i)\bchanged_files\b",
+            r"(?i)\bgit\s+show\b",
+            r"(?im)\bgrep\b[^\n]*\^Merge",
+            r"(?is)(?:file_count|changed_files).{0,200}(?:-eq|==)\s*0"
+            r".{0,200}(?:exit\s+0|success|pass)",
+            r"head_commit\.message",
         )
         for pattern in forbidden_patterns:
             self.assertIsNone(re.search(pattern, workflow), pattern)
+
+        bypass_fixtures = (
+            "file_count = 0",
+            "changed_files = 0",
+            "git show HEAD",
+            "grep '^Merge' commits.txt",
+            'if [ "$file_count" -eq 0 ]; then exit 0; fi',
+            "head_commit.message",
+        )
+        for pattern, fixture in zip(
+            forbidden_patterns,
+            bypass_fixtures,
+            strict=True,
+        ):
+            self.assertIsNotNone(
+                re.search(pattern, fixture),
+                (pattern, fixture),
+            )
 
 
 if __name__ == "__main__":
