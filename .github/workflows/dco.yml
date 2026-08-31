@@ -1,14 +1,10 @@
 # Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
 name: DCO
 
-# Legacy workflow/context retained only because the protected policy-root
-# ruleset names it explicitly. This solo-builder gate does not require commit
-# signatures or Signed-off-by trailers.
+# Org reusable DCO sign-off gate (SHA-pinned caller). Wave G CI parity.
 on:
   pull_request:
     branches: [main]
-  merge_group:
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,42 +12,5 @@ permissions:
 
 jobs:
   dco:
-    name: DCO sign-off
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - name: Validate event identity without signature bureaucracy
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          REPOSITORY: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          MG_BASE_REF: ${{ github.event.merge_group.base_ref }}
-          MG_BASE_SHA: ${{ github.event.merge_group.base_sha }}
-          MG_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$REPOSITORY"
-          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
-
-          case "$EVENT_NAME" in
-            pull_request)
-              test "$PR_BASE_REF" = "main"
-              [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-              [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
-              test "$PR_BASE_SHA" != "$PR_HEAD_SHA"
-              ;;
-            merge_group)
-              test "$MG_BASE_REF" = "refs/heads/main"
-              [[ "$MG_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-              [[ "$MG_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
-              test "$MG_BASE_SHA" != "$MG_HEAD_SHA"
-              ;;
-            workflow_dispatch) ;;
-            *) echo "Unsupported event: $EVENT_NAME" >&2; exit 1 ;;
-          esac
-
-          echo "Solo-builder event identity validated; signatures and DCO trailers are not required."
+    uses: szl-holdings/.github/.github/workflows/reusable-dco.yml@ebd2128c691b850c84438b671fbb512945933776
+    secrets: inherit
