@@ -81,7 +81,11 @@ or enforcement elsewhere. The tracked contract is deliberately small and auditab
 | Supply chain | **SLSA L1 honest**; L2 verified-provenance on roadmap | L3 / FedRAMP / Iron Bank / CMMC are **never** claimed |
 
 > The *locked* numbers are a contract and do not move. The **experimental `main` corpus**
-> (≈1323 decls / 23 axioms / CI-green) is reported **separately** and is **never folded into
+> (2119 declarations / 34 axioms raw, 33 unique / 430 `sorry` tokens raw, 378 outside pure `--` lines,
+> at [`lutar-lean@75a4a311`](https://github.com/szl-holdings/lutar-lean/commit/75a4a3112287d3d4776d7d6da85a432f185f3914),
+> measured 2026-09-25 by the org [`lean_numbers.py`](https://github.com/szl-holdings/.github/blob/907eb1f356c3d666131e74e476194ef1b4998ad4/.github/scripts/lean_numbers.py)
+> line-regex counter over `Lutar/` + `Main.lean`; the earlier "≈1323 decls / 23 axioms / CI-green" figure is
+> historical, written here 2026-06-07 with no source SHA recorded) is reported **separately** and is **never folded into
 > the 8 locked-proven formulas** {F1, F4, F7, F11, F12, F18, F19, F22}.
 
 ## What it automates
