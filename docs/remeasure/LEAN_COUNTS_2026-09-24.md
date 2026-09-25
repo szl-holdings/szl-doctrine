@@ -1,84 +1,52 @@
-# Lean count re-measurement - 2026-09-24
+# Lean count review - September 24, 2026 EDT
 
-Locked doctrine v11 states 749 declarations / 14 axioms / 163 tracked sorries.
+**Status: DRAFT / REVIEW REQUIRED. This is not a doctrine release or a new proof total.**
 
-## Measured (lutar-lean main, CI job 107858425790, lake build strict)
+The historical locked doctrine citation remains **749 declarations / 14 axioms / 163 tracked sorries**. This proposal changes none of those locked values, no proof assumptions, and no release authority. The observations below use different predicates and must not be substituted for that citation.
 
-- Unique declarations using sorry (Lean compiler warnings, deduplicated): **14**
-- Heuristic triage: {"PROOF_CANDIDATE":12,"ADVISORY_CONJECTURE":2}
+## Original proposal retained in history
 
-## Count lines reported by the CI job
+The original proposal at `0e16a68ec15a3c4cc815666dfa5f0dd48f5f2ad5` claimed 14 unique declarations from extracted compiler warnings for job `107858425790`, with a heuristic 12/2 classification. The displayed extract contains truncated/misdecoded warning and script text, not a complete source-bound declaration census. Neither completeness nor equivalence to the locked tracked-sorry predicate has been established. The number 14 is therefore an **unqualified diagnostic-subset claim**, not an admitted organization-wide or repository-wide total.
 
-~~~text
-955405Z warning: ././././Lutar/Innovations/round5/OuroLoopInputLipschitz.lean:88:0: automatically included section variable(s) unused in theorem 'Lutar.Innovations.Round5.InputLipschitz.InputContraction.contractingWith':
-ld (whole library ΓÇö strict)	2026-09-24T22:21:25.5145118Z warning: ././././Lutar/Wave8/DensityMixture.lean:50:0: automatically included section variable(s) unused in theorem 'Lutar.Wave8.DensityMixture.posSemidef_smul':
-ild (whole library ΓÇö strict)	2026-09-24T22:21:25.5149776Z warning: ././././Lutar/Wave8/DensityMixture.lean:63:0: automatically included section variable(s) unused in theorem 'Lutar.Wave8.DensityMixture.posSemidef_sum':
-ole library ΓÇö strict)	2026-09-24T22:21:25.5153996Z warning: ././././Lutar/Wave8/DensityMixture.lean:84:0: automatically included section variable(s) unused in theorem 'Lutar.Wave8.DensityMixture.density_mixture_trace':
-ake build (whole library ΓÇö strict)	2026-09-24T22:21:25.5171009Z warning: ././././Lutar/Wave8/LambdaMono.lean:49:0: automatically included section variable(s) unused in theorem 'Lutar.Wave8.LambdaMono.prod_strict_mono':
-umbers	lake build (whole library ΓÇö strict)	2026-09-24T22:21:25.5174555Z warning: ././././Lutar/Wave8/LambdaMono.lean:57:0: automatically included section variable(s) unused in theorem 'Lutar.Wave8.LambdaMono.prod_pos':
-trict)	2026-09-24T22:21:25.5197057Z warning: ././././Lutar/Wave9/CovarianceIntersection.lean:65:0: automatically included section variable(s) unused in theorem 'Lutar.Wave9.CovarianceIntersection.PosSemidef.nonneg_smul':
-3Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:92:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.faulty_bound'
-4747596Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:90:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.faulty'
-1:26.4751557Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:86:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.f'
-4755343Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:96:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.honest'
-759268Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:88:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.charter'
-.4763064Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:94:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.votes'
-26.4766983Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:84:10: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.mk'
-21:26.4770669Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:84:10: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate'
-070917Z warning: ././././Lutar/Innovations/round5/OuroLoopInputLipschitz.lean:88:0: automatically included section variable(s) unused in theorem 'Lutar.Innovations.Round5.InputLipschitz.InputContraction.contractingWith':
-reference-vectors executables	2026-09-24T22:21:49.7254399Z warning: ././././Lutar/Wave8/DensityMixture.lean:50:0: automatically included section variable(s) unused in theorem 'Lutar.Wave8.DensityMixture.posSemidef_smul':
- reference-vectors executables	2026-09-24T22:21:49.7258871Z warning: ././././Lutar/Wave8/DensityMixture.lean:63:0: automatically included section variable(s) unused in theorem 'Lutar.Wave8.DensityMixture.posSemidef_sum':
-nce-vectors executables	2026-09-24T22:21:49.7262884Z warning: ././././Lutar/Wave8/DensityMixture.lean:84:0: automatically included section variable(s) unused in theorem 'Lutar.Wave8.DensityMixture.density_mixture_trace':
-heck + reference-vectors executables	2026-09-24T22:21:49.7282924Z warning: ././././Lutar/Wave8/LambdaMono.lean:49:0: automatically included section variable(s) unused in theorem 'Lutar.Wave8.LambdaMono.prod_strict_mono':
-rs	Run check + reference-vectors executables	2026-09-24T22:21:49.7287545Z warning: ././././Lutar/Wave8/LambdaMono.lean:57:0: automatically included section variable(s) unused in theorem 'Lutar.Wave8.LambdaMono.prod_pos':
-tables	2026-09-24T22:21:49.7314988Z warning: ././././Lutar/Wave9/CovarianceIntersection.lean:65:0: automatically included section variable(s) unused in theorem 'Lutar.Wave9.CovarianceIntersection.PosSemidef.nonneg_smul':
-2Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:92:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.faulty_bound'
-6949820Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:90:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.faulty'
-1:50.6951756Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:86:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.f'
-6953590Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:96:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.honest'
-955433Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:88:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.charter'
-.6957367Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:94:2: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.votes'
-50.6959183Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:84:10: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate.mk'
-21:50.6960984Z warning: ././././Lutar/Wave24/AdmissibilityCertificate.lean:84:10: The namespace 'AdmissibilityCertificate' is duplicated in the declaration 'Lutar.Wave24.AdmissibilityCertificate.AdmissibilityCertificate'
-lake build + numbers	Run check + reference-vectors executables	2026-09-24T22:21:53.0513247Z Axioms: A1 monotone, A2 homogeneous, A3 Egyptian-exact, A4 bounded
-lake build + numbers	Run check + reference-vectors executables	2026-09-24T22:21:53.0514762Z Theorem 2 (bound): see Lutar/Bound.lean
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	∩╗┐2026-09-24T22:21:54.6854372Z ##[group]Run set -euo pipefail
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6854735Z ^[[36;1mset -euo pipefail^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6855099Z ^[[36;1m# The Theorem-U pack must stay a sound REDUCTION: NO new declared axiom^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6855594Z ^[[36;1m# token, NO proof placeholder, and the kernel-emitted axioms of its^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6856085Z ^[[36;1m# headline results must lie in the Lean/Mathlib trust base only.^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6856756Z ^[[36;1mDIR=Lutar/Uniqueness^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6857223Z ^[[36;1mtest -d "$DIR" || { echo "::error::$DIR missing"; exit 1; }^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6857647Z ^[[36;1m^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6858024Z ^[[36;1m# (1) No `axiom` declaration anywhere in the pack (line-start token).^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6858737Z ^[[36;1mif grep -rnE '^[[:space:]]*(private[[:space:]]+)?axiom[[:space:]]' "$DIR"; then^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6859466Z ^[[36;1m  echo "::error::Theorem-U pack declares an axiom token ΓÇö forbidden"; exit 1^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6859952Z ^[[36;1mfi^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6860222Z ^[[36;1m^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6860570Z ^[[36;1m# (2) No proof placeholders (whole-word) anywhere in the pack.^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6861138Z ^[[36;1mif grep -rnwE '(sorry|admit)' "$DIR"; then^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6861751Z ^[[36;1m  echo "::error::Theorem-U pack contains a proof placeholder ΓÇö forbidden"; exit 1^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6862668Z ^[[36;1mfi^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6862942Z ^[[36;1m^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6863379Z ^[[36;1m# (3) Kernel truth: compile the axiom-hygiene ledger and assert that^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6863925Z ^[[36;1m#     NONE of the Theorem-U declarations pulls in `sorryAx` (which is^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6864360Z ^[[36;1m#     how Lean surfaces an unproven `sorry` in `#print axioms`).^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6864871Z ^[[36;1mlake env lean "$DIR/AxiomCheck.lean" 2>&1 | tee /tmp/axiomcheck.out theorem_u_axiomcheck.out^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6865356Z ^[[36;1mif grep -q 'sorryAx' /tmp/axiomcheck.out; then^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6865781Z ^[[36;1m  echo "::error::#print axioms reports sorryAx in the Theorem-U pack"; exit 1^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6866145Z ^[[36;1mfi^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6866622Z ^[[36;1mecho "axiom-hygiene gate OK: Theorem-U pack is axiom-clean + placeholder-free"^[[0m
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6904379Z shell: /usr/bin/bash -e {0}
-lake build + numbers	Axiom-hygiene gate (Theorem-U pack, Lutar/Uniqueness/)	2026-09-24T22:21:54.6904689Z ##[endgroup]
-~~~
+Byte-identical duplicate PR #70 was consolidated into retained PR #69. Original commits and discussions remain available. Do not use the duplicate's existence as a second independent measurement.
 
-## Files quoting 749/14/163
+## Exact candidate-scoped observation
 
-- CITATION.cff
-- NAMING_CANON.md
-- README.md
-- SECURITY.md
+The separate, source-owned `lean_numbers.measured.json` artifact was downloaded from GitHub and independently checked against GitHub's archive digest. Its original bytes are preserved in [the evidence record](evidence/lean_numbers.a4cc7c4f.json).
 
-## Proposal
+- Source repository: `szl-holdings/lutar-lean`.
+- Candidate PR: #291, head `f01b4d60fc4bd186f2f041bc31ef8908c16b1722`.
+- Tested base: `f2105589ea61769cc46ff4a31a8442dfd05476e5`.
+- Actual checkout and artifact SHA: `a4cc7c4f826b52bc15d25aa3ea427870da9d7526`, the prospective PR integration, **not an admitted main revision** at observation.
+- Measurement time: `2026-09-25T01:24:17Z` / September 24, 9:24:17 p.m. EDT.
+- Workflow run: [36081727641](https://github.com/szl-holdings/lutar-lean/actions/runs/36081727641); producing job: `107904956134`.
+- Artifact ID: `10841434806`; archive name: `lean-numbers-a4cc7c4f826b52bc15d25aa3ea427870da9d7526`.
+- Archive SHA-256: `3a2b7c644516bd0ee41b75c2008a0c27b6c3be95be6b5c4d2aacb734427dbd5e`.
+- Measured JSON SHA-256: `d1c69e8379475a2f7cf2e1c487be059bdc2ceed0d8f6ecaf8efd24f4a35a1b19`.
+- Measured JSON Git blob: `4ca3f37e1de815b1cc4f205f2c393d1e3220f910` (1,230 bytes).
+- Toolchain observed in the producing build: Lean `v4.18.0`; Mathlib revision `aa936c36e8484abd300577139faf8e945850831a`.
+- Archived `lake-manifest.json` SHA-256: `8a2baa1ece45f2f69b96ad872f6d50c0dc03f49f173da0946eb43a91ad1e46c5`.
 
-Re-derive the tracked-sorry figure from Lean compiler warnings and publish doctrine v11.1 through the normal review path. This PR changes no locked numbers.
+The ZIP also contains the committed `.github/data/lean_numbers.json`, whose embedded identity is an older pending sampler snapshot. That separate member is **not** the measured candidate record and was not substituted for `lean_numbers.measured.json`.
+
+## Predicate and observed values
+
+The implementation is [the counter at the exact candidate](https://github.com/szl-holdings/lutar-lean/blob/f01b4d60fc4bd186f2f041bc31ef8908c16b1722/.github/scripts/lean_numbers.py), Git blob `126af6cd5f554705bfec8621aeb0dcddb437c80f`. Its `iter_lean_files` scans `Lutar/` plus `Main.lean`, excluding paths matched by its explicit `EXPERIMENTAL_SCOPES`. This is not every Lean file in the repository or every imported Mathlib declaration.
+
+| Artifact field | Value | Actual meaning |
+| --- | ---: | --- |
+| `declarations` | 1401 | Lines matched by the counter's fixed declaration regex. Not a count of proved theorems. |
+| `axioms_raw` | 26 | Lines matched by the fixed axiom-declaration regex. |
+| `axioms_unique` | 25 | Distinct names extracted by that regex. Not a proof trust-base certification. |
+| `sorries_raw` | 319 | Word-boundary `sorry` tokens within the included file scope. Includes comment/documentation occurrences. |
+| `sorries_noncomment` | 266 | Tokens after excluding pure `--` lines only. Block comments, inline comments, and strings are not parsed away; this must not be called a declaration or live-proof-obligation count. |
+| `sorries_putnam` | 56 | Raw token occurrences in included paths under `Putnam/`. |
+| `sorries_baseline` | 263 | Raw token occurrences in other included paths. Despite the field name, this is not the historical locked tracked-sorry figure. |
+
+The raw path split reconciles: `56 + 263 = 319`. This does not make the other predicates interchangeable. A successful build can also contain explicitly tracked proof placeholders outside separately guarded scopes; build success is not a repository-wide proof-completeness certificate.
+
+## Acceptance before any doctrine update
+
+First define the intended denominator and distinguish lexical tokens, compiler diagnostics, unique declarations, transitive axiom dependencies, experimental scopes, and the historical locked baseline. Bind any new declaration-level census to an admitted source revision, complete enumeration, toolchain, dependency manifest, extraction implementation, and immutable evidence. Reconcile its identities against the governed theorem registry and explain changes rather than comparing unlike counts.
+
+The record above remains a dated candidate observation even if newer source is subsequently merged. It must not be retimestamped or presented as a current-main census. No locked doctrine update, general conjecture closure, runtime guarantee, model qualification, or public-domain deployment is authorized by this document.
