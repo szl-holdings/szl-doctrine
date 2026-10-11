@@ -22,7 +22,7 @@
 
 **Control before action. Evidence after.**
 
-[Product](https://a-11-oy.com) · [Proof](https://a11oy.net) · [GitHub organization](https://github.com/szl-holdings)
+[Product](https://a-11-oy.com) · [GitHub organization](https://github.com/szl-holdings)
 <!-- /szl:header -->
 
 ## 💡 Why it matters
