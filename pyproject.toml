@@ -1,0 +1,33 @@
+# Standard (PEP 621) project metadata for szl-doctrine.
+#
+# This repository ships doctrine documents, not an importable package. Its
+# Python is CI tooling that runs by file path: scripts/check_naming_canon.py
+# and the release-boundary and DCO checkers in .github/scripts/, with their
+# tests. Installing the project therefore installs metadata only.
+#
+# The release-boundary checker's one third-party package, PyYAML, stays pinned
+# with its hash in .github/requirements/release-boundary.lock and is not
+# repeated here. Version 0.0.0 marks a distribution that is never published,
+# and the "Private :: Do Not Upload" classifier makes PyPI refuse an upload.
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "szl-doctrine"
+version = "0.0.0"
+description = "SZL Holdings doctrine documents and the Python checks that guard them"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "SZL Holdings" }]
+dependencies = []
+classifiers = ["Private :: Do Not Upload"]
+
+[tool.setuptools]
+# Explicitly empty: nothing is installed, and automatic package discovery
+# stays off.
+packages = []
+py-modules = []
