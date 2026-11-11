@@ -58,11 +58,10 @@ class StrictManifestJsonTests(unittest.TestCase):
         )
 
     def _write(self, text: str) -> Path:
-        directory = Path(tempfile.mkdtemp())
-        path = directory / "manifest.json"
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "manifest.json"
         path.write_text(text, encoding="utf-8")
-        self.addCleanup(lambda: path.unlink(missing_ok=True))
-        self.addCleanup(lambda: directory.rmdir())
         return path
 
 
