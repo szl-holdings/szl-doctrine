@@ -8,6 +8,7 @@ import base64
 import copy
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -129,9 +130,38 @@ def _hash_map(value: object, state: str, label: str) -> dict[str, str]:
     return result
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON member: {key!r}")
+        value[key] = item
+    return value
+
+
+def _reject_nonfinite_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON number: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("JSON number is outside the finite float range")
+    return number
+
+
+def _strict_json(text: str) -> object:
+    return json.loads(
+        text,
+        object_pairs_hook=_reject_duplicate_keys,
+        parse_constant=_reject_nonfinite_constant,
+        parse_float=_parse_finite_float,
+    )
+
+
 def load_manifest(path: Path) -> dict:
     try:
-        manifest = json.loads(path.read_text(encoding="utf-8"))
+        manifest = _strict_json(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise BoundaryError("release-boundary manifest is unavailable or malformed") from error
     _exact_keys(manifest, {"schema", "source_repository", "targets"}, "manifest")
