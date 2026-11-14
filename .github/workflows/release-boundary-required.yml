@@ -175,6 +175,7 @@ jobs:
             --manifest .github/release-boundary/manifest.json \
             --validate-manifest-only
           "$BOUNDARY_PYTHON" -I .github/scripts/test_release_boundary.py -v
+          "$BOUNDARY_PYTHON" -I .github/scripts/test_release_boundary_json.py -v
           "$BOUNDARY_PYTHON" -I .github/scripts/release_boundary.py \
             --manifest .github/release-boundary/manifest.json \
             --verify-all-active \
