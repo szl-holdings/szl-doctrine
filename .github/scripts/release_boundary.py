@@ -1,0 +1,2467 @@
+#!/usr/bin/env python3
+"""Fail-closed external release authorization without target checkout/execution."""
+from __future__ import annotations
+
+import argparse
+import ast
+import base64
+import copy
+import hashlib
+import json
+import math
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shlex
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+import yaml
+
+
+SCHEMA = "szl.release-boundary-manifest/v1"
+SOURCE_REPOSITORY = "szl-holdings/szl-doctrine"
+TARGET_IDS = {
+    "szl-holdings/energy-attest-holo": 1295929955,
+    "szl-holdings/governed-norm-holo": 1295931607,
+    "szl-holdings/lambda-gate-holo": 1295931629,
+    "szl-holdings/receipt-chain-live": 1295940016,
+    "szl-holdings/szl-kernels-live": 1295941334,
+    "szl-holdings/szl-provctl-live": 1295941247,
+}
+HEX40 = re.compile(r"^[0-9a-f]{40}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+ANY_USES = re.compile(
+    r"^\s*(?:-\s+)?uses:\s*([^\s#]+)(?:\s+#.*)?$", re.MULTILINE
+)
+PINNED_USES = re.compile(r"^([^@\s]+)@([0-9a-f]{40})$")
+NATIVE_GOVERNANCE_TOKEN = "${{ github.token }}"
+STATIC_TOP_PERMISSIONS = frozenset({("contents", "read")})
+STATIC_AUTHORIZATION_PERMISSIONS = frozenset(
+    {
+        ("actions", "read"),
+        ("checks", "read"),
+        ("contents", "read"),
+        ("pull-requests", "read"),
+    }
+)
+STATIC_PUBLISHER_PERMISSIONS = frozenset()
+STATIC_ATTESTATION_PERMISSIONS = frozenset(
+    {("attestations", "write"), ("contents", "read"), ("id-token", "write")}
+)
+STATIC_JOB_IDS = frozenset(
+    {"validate", "dco", "authorize", "deploy", "measure", "attest"}
+)
+HF_SECRET = "${{ secrets.HF_TOKEN }}"
+UPLOAD_ARTIFACT = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+DOWNLOAD_ARTIFACT = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+ATTEST_PROVENANCE = "actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32"
+HARDEN_RUNNER = "step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920"
+CHECKOUT = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+SETUP_PYTHON = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+LEGACY_GOVERNANCE_CREDENTIAL_MARKERS = (
+    "actions/create-github-app-token@",
+    "QILLQAQ_CLIENT_ID",
+    "QILLQAQ_PRIVATE_KEY",
+    "permission-administration:",
+    "permission-actions:",
+    "permission-contents:",
+    "steps.governance-token.outputs.token",
+    "secrets.GITHUB_TOKEN",
+    "secrets['GITHUB_TOKEN']",
+    'secrets["GITHUB_TOKEN"]',
+)
+REGULAR_MODES = {"100644", "100755"}
+MAX_TREE_ENTRIES = 20000
+MAX_BLOB_BYTES = 4 * 1024 * 1024
+MUTABLE_SUFFIXES = {"", ".html", ".json", ".md", ".txt"}
+KERNEL_WORKFLOW_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "release-boundary"
+    / "fixtures"
+    / "hf-kernel-space.yml"
+)
+KERNEL_WORKFLOW_FIXTURE_SHA256 = (
+    "04bd0c3580acfd882690a20626e6b4f09a3ece2c2dd08f9eb8018861633fd061"
+)
+
+
+class BoundaryError(RuntimeError):
+    """The candidate cannot be externally authorized."""
+
+
+def _exact_sha(value: object, label: str) -> str:
+    normalized = str(value or "").lower()
+    if not HEX40.fullmatch(normalized):
+        raise BoundaryError(f"{label} must be an exact lowercase 40-character SHA")
+    return normalized
+
+
+def _safe_path(value: object) -> str:
+    if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
+        raise BoundaryError(f"unsafe repository path: {value!r}")
+    path = PurePosixPath(value)
+    if path.is_absolute() or ".." in path.parts or str(path) in {"", "."}:
+        raise BoundaryError(f"unsafe repository path: {value!r}")
+    return str(path)
+
+
+def _exact_keys(value: object, expected: set[str], label: str) -> dict:
+    if not isinstance(value, dict) or set(value) != expected:
+        raise BoundaryError(f"{label} fields are not exact")
+    return value
+
+
+def _hash_map(value: object, state: str, label: str) -> dict[str, str]:
+    if not isinstance(value, dict) or not value:
+        raise BoundaryError(f"{label} must be a non-empty path/hash map")
+    result = {}
+    for raw_path, digest in value.items():
+        path = _safe_path(raw_path)
+        if path in result or not isinstance(digest, str):
+            raise BoundaryError(f"{label} contains a malformed entry")
+        if state == "ACTIVE" and not HEX64.fullmatch(digest):
+            raise BoundaryError(f"active {label} hash is not exact: {path}")
+        if state == "PENDING" and digest != "PENDING":
+            raise BoundaryError(f"pending {label} must use literal PENDING: {path}")
+        result[path] = digest
+    return result
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON member: {key!r}")
+        value[key] = item
+    return value
+
+
+def _reject_nonfinite_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON number: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("JSON number is outside the finite float range")
+    return number
+
+
+def _strict_json(text: str) -> object:
+    return json.loads(
+        text,
+        object_pairs_hook=_reject_duplicate_keys,
+        parse_constant=_reject_nonfinite_constant,
+        parse_float=_parse_finite_float,
+    )
+
+
+def load_manifest(path: Path) -> dict:
+    try:
+        manifest = _strict_json(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise BoundaryError("release-boundary manifest is unavailable or malformed") from error
+    _exact_keys(manifest, {"schema", "source_repository", "targets"}, "manifest")
+    if manifest["schema"] != SCHEMA or manifest["source_repository"] != SOURCE_REPOSITORY:
+        raise BoundaryError("manifest schema or protected source repository is wrong")
+    if not isinstance(manifest["targets"], dict) or set(manifest["targets"]) != set(TARGET_IDS):
+        raise BoundaryError("manifest target allowlist is not exact")
+    for repository, entry in manifest["targets"].items():
+        _validate_entry(repository, entry)
+    return manifest
+
+
+def _validate_entry(repository: str, value: object) -> None:
+    entry = _exact_keys(value, {"repository_id", "state", "observed_candidate_sha", "pending_reason", "workflow_files", "secret_execution_files", "mutable_public_assets", "publisher_contract"}, f"manifest entry {repository}")
+    if entry["repository_id"] != TARGET_IDS[repository]:
+        raise BoundaryError(f"repository ID allowlist mismatch: {repository}")
+    state = entry["state"]
+    if state not in {"ACTIVE", "PENDING"}:
+        raise BoundaryError(f"invalid manifest state: {repository}")
+    if state == "ACTIVE":
+        _exact_sha(entry["observed_candidate_sha"], f"{repository} observed candidate")
+        if entry["pending_reason"] is not None:
+            raise BoundaryError(f"active target has a pending reason: {repository}")
+    elif entry["observed_candidate_sha"] is not None or not isinstance(entry["pending_reason"], str) or not entry["pending_reason"].strip():
+        raise BoundaryError(f"pending target is not explicitly fail-closed: {repository}")
+    workflows = _hash_map(entry["workflow_files"], state, "workflow files")
+    closure = _hash_map(entry["secret_execution_files"], state, "secret execution files")
+    if set(workflows) & set(closure) or any(not path.startswith(".github/workflows/") for path in workflows):
+        raise BoundaryError(f"workflow and secret closure path sets are invalid: {repository}")
+    assets = entry["mutable_public_assets"]
+    if not isinstance(assets, list) or assets != sorted(set(assets)):
+        raise BoundaryError(f"mutable public assets are not sorted and unique: {repository}")
+    for raw_path in assets:
+        path = _safe_path(raw_path)
+        if path.startswith(".github/") or path.startswith("scripts/") or path.startswith("tests/") or PurePosixPath(path).suffix.lower() not in MUTABLE_SUFFIXES or path in workflows or path in closure:
+            raise BoundaryError(f"mutable asset could execute on the CI host: {path}")
+    contract = _exact_keys(entry["publisher_contract"], {"publisher_workflow", "publisher_script", "dependency_lock", "protected_execution_roots", "isolated_invocation", "identities", "required_workflow_markers", "required_publisher_markers"}, f"publisher contract {repository}")
+    if contract["publisher_workflow"] not in workflows or contract["publisher_script"] not in closure or contract["dependency_lock"] not in closure:
+        raise BoundaryError(f"publisher runtime is outside the protected path sets: {repository}")
+    roots = contract["protected_execution_roots"]
+    if not isinstance(roots, list) or roots != sorted(set(roots)) or not roots:
+        raise BoundaryError(f"protected execution roots are malformed: {repository}")
+    for root in roots:
+        _safe_path(root)
+        if "/" in root:
+            raise BoundaryError(f"protected execution root must be top-level: {repository}")
+    if not isinstance(contract["isolated_invocation"], str) or not contract["isolated_invocation"]:
+        raise BoundaryError(f"isolated publisher invocation is missing: {repository}")
+    identities = contract["identities"]
+    if not isinstance(identities, list) or not identities:
+        raise BoundaryError(f"publisher identities are missing: {repository}")
+    for identity in identities:
+        identity = _exact_keys(identity, {"kind", "path", "source_repository", "target"}, f"identity {repository}")
+        if identity["kind"] not in {"json", "python_constants"} or identity["path"] not in closure or identity["source_repository"] != repository or identity["target"] != repository.replace("szl-holdings/", "SZLHOLDINGS/"):
+            raise BoundaryError(f"publisher identity is outside the closure or wrong: {repository}")
+    for key in ("required_workflow_markers", "required_publisher_markers"):
+        markers = contract[key]
+        if not isinstance(markers, list) or not markers or any(not isinstance(marker, str) or not marker for marker in markers):
+            raise BoundaryError(f"{key} is incomplete: {repository}")
+
+
+class GitHubAPI:
+    def __init__(self, token: str, api_root: str = "https://api.github.com") -> None:
+        if not token:
+            raise BoundaryError("GITHUB_TOKEN is unavailable")
+        self.token = token
+        self.api_root = api_root.rstrip("/")
+
+    def get(self, path: str) -> object:
+        request = urllib.request.Request(self.api_root + path, headers={"Accept": "application/vnd.github+json", "Authorization": f"Bearer {self.token}", "User-Agent": "szl-doctrine-release-boundary/1.0", "X-GitHub-Api-Version": "2022-11-28"})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                if response.status != 200:
+                    raise BoundaryError(f"GitHub API failed closed with HTTP {response.status}")
+                return json.load(response)
+        except urllib.error.HTTPError as error:
+            raise BoundaryError(f"GitHub API failed closed with HTTP {error.code}") from error
+        except (TimeoutError, OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise BoundaryError("GitHub API retrieval failed closed") from error
+
+
+def _repository_identity(api: GitHubAPI, repository: str, expected_id: int) -> None:
+    metadata = api.get(f"/repos/{repository}")
+    if not isinstance(metadata, dict) or metadata.get("id") != expected_id or metadata.get("full_name") != repository or metadata.get("default_branch") != "main":
+        raise BoundaryError("event repository identity or default branch is not exact")
+
+
+def _pull_binding(
+    value: object, repository: str, repository_id: int, number: int
+) -> tuple[str, str, int]:
+    if not isinstance(value, dict) or value.get("number") != number or value.get("state") != "open":
+        raise BoundaryError("pull request metadata is unavailable or not open")
+    head, base = value.get("head"), value.get("base")
+    if not isinstance(head, dict) or not isinstance(base, dict) or not isinstance(head.get("repo"), dict) or not isinstance(base.get("repo"), dict):
+        raise BoundaryError("pull request head/base metadata is malformed")
+    if head["repo"].get("id") != repository_id or base["repo"].get("id") != repository_id or head["repo"].get("full_name") != repository or base["repo"].get("full_name") != repository:
+        raise BoundaryError("forked or cross-repository candidates are not authorized")
+    if base.get("ref") != "main":
+        raise BoundaryError("pull request base is not the exact default branch")
+    head_sha = _exact_sha(head.get("sha"), "pull request head")
+    base_sha = _exact_sha(base.get("sha"), "pull request base")
+    changed = value.get("changed_files")
+    if not isinstance(changed, int) or isinstance(changed, bool) or changed < 0 or changed > 3000:
+        raise BoundaryError("pull request changed-file count is unavailable or unbounded")
+    return head_sha, base_sha, changed
+
+
+def _pull_files(api: GitHubAPI, repository: str, number: int, declared: int) -> list[str]:
+    pages = (declared + 99) // 100
+    paths, seen = [], set()
+    for page in range(1, pages + 1):
+        rows = api.get(f"/repos/{repository}/pulls/{number}/files?per_page=100&page={page}")
+        expected = 100 if page < pages else declared - 100 * (pages - 1)
+        if not isinstance(rows, list) or len(rows) != expected:
+            raise BoundaryError("pull request files pagination is incomplete")
+        for row in rows:
+            if not isinstance(row, dict):
+                raise BoundaryError("pull request file metadata is malformed")
+            path = _safe_path(row.get("filename"))
+            if path in seen:
+                raise BoundaryError(f"duplicate pull request file entry: {path}")
+            seen.add(path)
+            paths.append(path)
+    boundary = api.get(f"/repos/{repository}/pulls/{number}/files?per_page=100&page={pages + 1 if pages else 1}")
+    if not isinstance(boundary, list) or boundary or len(paths) != declared:
+        raise BoundaryError("pull request file count/boundary page is incomplete")
+    return paths
+
+
+def _ref_sha(api: GitHubAPI, repository: str, ref: str) -> str:
+    encoded = urllib.parse.quote(ref.removeprefix("refs/"), safe="")
+    value = api.get(f"/repos/{repository}/git/ref/{encoded}")
+    if not isinstance(value, dict) or not isinstance(value.get("object"), dict):
+        raise BoundaryError("Git ref metadata is malformed")
+    return _exact_sha(value["object"].get("sha"), f"ref {ref}")
+
+
+def _event_binding(api: GitHubAPI, event: dict, repository: str, repository_id: int) -> tuple[str, tuple[object, ...]]:
+    event_repo = event.get("repository")
+    if not isinstance(event_repo, dict) or event_repo.get("full_name") != repository or event_repo.get("id") != repository_id:
+        raise BoundaryError("event payload repository identity is wrong")
+    if "pull_request" in event:
+        pull = event.get("pull_request")
+        number = event.get("number")
+        if not isinstance(pull, dict) or not isinstance(number, int):
+            raise BoundaryError("pull request event payload is malformed")
+        event_head = _exact_sha((pull.get("head") or {}).get("sha"), "event pull request head")
+        event_base = _exact_sha((pull.get("base") or {}).get("sha"), "event pull request base")
+        first = api.get(f"/repos/{repository}/pulls/{number}")
+        head_sha, base_sha, changed = _pull_binding(
+            first, repository, repository_id, number
+        )
+        if head_sha != event_head or base_sha != event_base:
+            raise BoundaryError("event and authoritative pull request head/base differ")
+        _pull_files(api, repository, number, changed)
+        second = api.get(f"/repos/{repository}/pulls/{number}")
+        if _pull_binding(second, repository, repository_id, number) != (
+            head_sha,
+            base_sha,
+            changed,
+        ):
+            raise BoundaryError("pull request head/base/count drifted during pagination")
+        return head_sha, ("pull_request", number, head_sha, base_sha, changed)
+    group = event.get("merge_group")
+    if not isinstance(group, dict):
+        raise BoundaryError("only pull_request and merge_group events are supported")
+    head_sha = _exact_sha(group.get("head_sha"), "merge-group head")
+    base_sha = _exact_sha(group.get("base_sha"), "merge-group base")
+    head_ref, base_ref = str(group.get("head_ref") or ""), str(group.get("base_ref") or "")
+    if not head_ref.startswith("refs/heads/gh-readonly-queue/main/") or base_ref != "refs/heads/main" or _exact_sha(os.environ.get("GITHUB_SHA"), "GITHUB_SHA") != head_sha:
+        raise BoundaryError("merge-group event is not an exact default-branch queue binding")
+    if _ref_sha(api, repository, head_ref) != head_sha or _ref_sha(api, repository, base_ref) != base_sha:
+        raise BoundaryError("merge-group refs do not resolve to event SHAs")
+    return head_sha, ("merge_group", head_ref, head_sha, base_ref, base_sha)
+
+
+def _tree(api: GitHubAPI, repository: str, head_sha: str) -> dict[str, dict]:
+    commit = api.get(f"/repos/{repository}/git/commits/{head_sha}")
+    if not isinstance(commit, dict) or commit.get("sha") != head_sha or not isinstance(commit.get("tree"), dict):
+        raise BoundaryError("candidate commit metadata is malformed")
+    tree_sha = _exact_sha(commit["tree"].get("sha"), "candidate tree")
+    value = api.get(f"/repos/{repository}/git/trees/{tree_sha}?recursive=1")
+    if not isinstance(value, dict) or value.get("sha") != tree_sha or value.get("truncated") is not False or not isinstance(value.get("tree"), list) or len(value["tree"]) > MAX_TREE_ENTRIES:
+        raise BoundaryError("candidate recursive tree is unavailable, truncated, or unbounded")
+    entries = {}
+    for raw in value["tree"]:
+        if not isinstance(raw, dict):
+            raise BoundaryError("candidate tree entry is malformed")
+        path = _safe_path(raw.get("path"))
+        if path in entries:
+            raise BoundaryError(f"duplicate candidate tree path: {path}")
+        mode, kind = raw.get("mode"), raw.get("type")
+        if mode in {"120000", "160000"} or kind == "commit":
+            raise BoundaryError(f"symlink or submodule is forbidden: {path}")
+        if kind == "blob" and mode not in REGULAR_MODES:
+            raise BoundaryError(f"non-regular blob mode is forbidden: {path}")
+        entries[path] = raw
+    return entries
+
+
+def _blob(api: GitHubAPI, repository: str, entry: dict) -> bytes:
+    sha = _exact_sha(entry.get("sha"), "blob SHA")
+    value = api.get(f"/repos/{repository}/git/blobs/{sha}")
+    if not isinstance(value, dict) or value.get("sha") != sha or value.get("encoding") != "base64" or not isinstance(value.get("content"), str):
+        raise BoundaryError("required Git blob is malformed")
+    try:
+        data = base64.b64decode("".join(value["content"].split()), validate=True)
+    except (ValueError, TypeError) as error:
+        raise BoundaryError("required Git blob base64 is malformed") from error
+    if len(data) > MAX_BLOB_BYTES or value.get("size") != len(data) or entry.get("size") != len(data):
+        raise BoundaryError("required Git blob size is wrong or unbounded")
+    return data
+
+
+def _identities(repository: str, contract: dict, blobs: dict[str, bytes]) -> None:
+    for identity in contract["identities"]:
+        data = blobs[identity["path"]]
+        if identity["kind"] == "json":
+            try:
+                value = json.loads(data.decode("utf-8"))
+            except (UnicodeError, json.JSONDecodeError) as error:
+                raise BoundaryError("publisher identity JSON is malformed") from error
+            if not isinstance(value, dict) or value.get("source_repository") != repository or value.get("target") != identity["target"]:
+                raise BoundaryError("publisher config identity is wrong")
+        else:
+            try:
+                module = ast.parse(data.decode("utf-8"))
+            except (UnicodeError, SyntaxError) as error:
+                raise BoundaryError("publisher identity Python is malformed") from error
+            governed_names = {
+                "SOURCE_REPO",
+                "SOURCE_REPOSITORY",
+                "HF_REPO",
+                "TARGET",
+            }
+            literals = {}
+            allowed_stores = set()
+            for node in module.body:
+                target = None
+                value = None
+                if (
+                    isinstance(node, ast.Assign)
+                    and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)
+                ):
+                    target, value = node.targets[0], node.value
+                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                    target, value = node.target, node.value
+                if target is None or target.id not in governed_names:
+                    continue
+                if target.id in literals or value is None:
+                    raise BoundaryError("publisher Python identity constant is rebound")
+                try:
+                    literals[target.id] = ast.literal_eval(value)
+                except (ValueError, TypeError) as error:
+                    raise BoundaryError(
+                        "publisher Python identity constant is not a literal"
+                    ) from error
+                allowed_stores.add(id(target))
+            for node in ast.walk(module):
+                if (
+                    isinstance(node, ast.Name)
+                    and node.id in governed_names
+                    and isinstance(node.ctx, (ast.Store, ast.Del))
+                    and id(node) not in allowed_stores
+                ):
+                    raise BoundaryError(
+                        "publisher Python identity constant is rebound"
+                    )
+                bound_names = []
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    bound_names.append(node.name)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                    arguments = node.args
+                    bound_names.extend(
+                        argument.arg
+                        for argument in (
+                            list(arguments.posonlyargs)
+                            + list(arguments.args)
+                            + list(arguments.kwonlyargs)
+                        )
+                    )
+                    if arguments.vararg is not None:
+                        bound_names.append(arguments.vararg.arg)
+                    if arguments.kwarg is not None:
+                        bound_names.append(arguments.kwarg.arg)
+                if isinstance(node, (ast.Import, ast.ImportFrom)):
+                    bound_names.extend(
+                        alias.asname or alias.name.split(".", 1)[0]
+                        for alias in node.names
+                    )
+                if isinstance(node, ast.ExceptHandler) and node.name:
+                    bound_names.append(node.name)
+                if isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+                    bound_names.append(node.name)
+                if isinstance(node, ast.MatchMapping) and node.rest:
+                    bound_names.append(node.rest)
+                if any(name in governed_names for name in bound_names):
+                    raise BoundaryError(
+                        "publisher Python identity constant is rebound"
+                    )
+            source_literals = {
+                name: literals[name]
+                for name in ("SOURCE_REPO", "SOURCE_REPOSITORY")
+                if name in literals
+            }
+            target_literals = {
+                name: literals[name]
+                for name in ("HF_REPO", "TARGET")
+                if name in literals
+            }
+            if (
+                not source_literals
+                or any(value != identity["source_repository"] for value in source_literals.values())
+                or not target_literals
+                or any(value != identity["target"] for value in target_literals.values())
+            ):
+                raise BoundaryError("publisher Python identity constants are wrong")
+
+
+class _StrictWorkflowLoader(yaml.SafeLoader):
+    """YAML loader with GitHub-style booleans and duplicate-key rejection."""
+
+
+_StrictWorkflowLoader.yaml_implicit_resolvers = copy.deepcopy(
+    yaml.SafeLoader.yaml_implicit_resolvers
+)
+for initial, resolvers in tuple(
+    _StrictWorkflowLoader.yaml_implicit_resolvers.items()
+):
+    _StrictWorkflowLoader.yaml_implicit_resolvers[initial] = [
+        (tag, expression)
+        for tag, expression in resolvers
+        if tag != "tag:yaml.org,2002:bool"
+    ]
+_StrictWorkflowLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:bool",
+    re.compile(r"^(?:true|false|True|False|TRUE|FALSE)$"),
+    list("tTfF"),
+)
+
+
+def _construct_strict_mapping(
+    loader: _StrictWorkflowLoader, node: yaml.MappingNode, deep: bool = False
+) -> dict:
+    if not isinstance(node, yaml.MappingNode):
+        raise BoundaryError("publisher workflow mapping is malformed")
+    result = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if not isinstance(key, str) or key == "<<":
+            raise BoundaryError("publisher workflow contains a non-string or merged YAML key")
+        if key in result:
+            raise BoundaryError(f"publisher workflow contains a duplicate YAML key: {key}")
+        result[key] = loader.construct_object(value_node, deep=deep)
+    return result
+
+
+_StrictWorkflowLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_strict_mapping,
+)
+
+
+def _workflow_document(workflow: str) -> dict:
+    try:
+        tokens = yaml.scan(workflow, Loader=_StrictWorkflowLoader)
+        forbidden = (
+            yaml.tokens.AliasToken,
+            yaml.tokens.AnchorToken,
+            yaml.tokens.TagToken,
+        )
+        if any(isinstance(token, forbidden) for token in tokens):
+            raise BoundaryError("publisher workflow YAML aliases, anchors, and tags are forbidden")
+        document = yaml.load(workflow, Loader=_StrictWorkflowLoader)
+    except BoundaryError:
+        raise
+    except yaml.YAMLError as error:
+        raise BoundaryError("publisher workflow YAML is malformed") from error
+    if not isinstance(document, dict):
+        raise BoundaryError("publisher workflow document is not a mapping")
+    return document
+
+
+def _mapping(value: object, label: str) -> dict:
+    if not isinstance(value, dict):
+        raise BoundaryError(f"{label} must be a YAML mapping")
+    return value
+
+
+def _permissions(value: object, label: str) -> frozenset[tuple[str, str]]:
+    mapping = _mapping(value, label)
+    if any(
+        not isinstance(key, str) or not isinstance(access, str)
+        for key, access in mapping.items()
+    ):
+        raise BoundaryError(f"{label} permissions are malformed")
+    return frozenset(mapping.items())
+
+
+def _steps(job: dict, label: str) -> list[dict]:
+    value = job.get("steps")
+    if not isinstance(value, list) or not value:
+        raise BoundaryError(f"{label} steps are missing")
+    if any(not isinstance(step, dict) for step in value):
+        raise BoundaryError(f"{label} contains a malformed step")
+    names = [step.get("name") for step in value if "name" in step]
+    if any(not isinstance(name, str) or not name for name in names):
+        raise BoundaryError(f"{label} contains a malformed step name")
+    if len(names) != len(set(names)):
+        raise BoundaryError(f"{label} contains duplicate step names")
+    return value
+
+
+def _named_step(job: dict, name: str) -> dict:
+    matches = [
+        step
+        for step in _steps(job, f"job {job.get('name')}")
+        if step.get("name") == name
+    ]
+    if len(matches) != 1:
+        raise BoundaryError(f"publisher workflow is missing exact step: {name}")
+    return matches[0]
+
+
+def _logical_shell_commands(value: object, label: str) -> list[str]:
+    if not isinstance(value, str) or not value.strip():
+        raise BoundaryError(f"{label} has no executable shell body")
+    commands: list[str] = []
+    pending = ""
+    for raw in value.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        pending = f"{pending} {line}".strip() if pending else line
+        if pending.endswith("\\"):
+            pending = pending[:-1].rstrip()
+            continue
+        commands.append(pending)
+        pending = ""
+    if pending:
+        raise BoundaryError(f"{label} contains a dangling shell continuation")
+    return commands
+
+
+def _command_tokens(command: str, label: str) -> list[str]:
+    try:
+        return shlex.split(command, posix=True)
+    except ValueError as error:
+        raise BoundaryError(f"{label} shell command is malformed") from error
+
+
+def _exact_input_map(observed: dict, expected: dict) -> bool:
+    if set(observed) != set(expected):
+        return False
+    for key, expectation in expected.items():
+        value = observed[key]
+        if isinstance(expectation, frozenset):
+            if not any(
+                type(value) is type(allowed) and value == allowed
+                for allowed in expectation
+            ):
+                return False
+        elif type(value) is not type(expectation) or value != expectation:
+            return False
+    return True
+
+
+def _require_artifact_step(
+    job: dict, name: str, action: str, expected_with: dict
+) -> None:
+    step = _named_step(job, name)
+    if step.get("uses") != action:
+        raise BoundaryError(f"{name} does not use the exact pinned artifact action")
+    inputs = _mapping(step.get("with"), f"{name} inputs")
+    if not _exact_input_map(inputs, expected_with):
+        raise BoundaryError(f"{name} does not bind the exact artifact input map")
+
+
+def _walk_scalars(value: object, path: tuple[object, ...] = ()):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield from _walk_scalars(child, path + (key,))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            yield from _walk_scalars(child, path + (index,))
+    else:
+        yield path, value
+
+
+def _workflow_governance_contract(
+    workflow: str, *, publisher_input_retention_days: int = 1
+) -> None:
+    if publisher_input_retention_days not in {1, 30}:
+        raise BoundaryError("publisher input retention policy is not exact")
+    document = _workflow_document(workflow)
+    if set(document) != {"name", "on", "permissions", "concurrency", "jobs"}:
+        raise BoundaryError("publisher workflow top-level field allowlist is not exact")
+    workflow_name = document.get("name")
+    if workflow_name not in {"Governed static Space release", "hf-space-deploy", "kernel-contracts"}:
+        raise BoundaryError("publisher workflow identity is not exact")
+    trigger = _mapping(document.get("on"), "publisher workflow trigger")
+    if workflow_name == "hf-space-deploy":
+        expected_trigger = {"push": {"branches": ["main"]}}
+    elif workflow_name == "kernel-contracts":
+        expected_trigger = {
+            "pull_request": None,
+            "push": {"branches": ["main"]},
+            "schedule": [{"cron": "19 7 * * *"}],
+            "workflow_dispatch": None,
+        }
+    else:
+        expected_trigger = {
+            "pull_request": {
+                "types": ["opened", "synchronize", "reopened", "edited", "ready_for_review"]
+            },
+            "push": {"branches": ["main"]},
+        }
+    if trigger != expected_trigger:
+        raise BoundaryError("publisher workflow trigger is not exact")
+    concurrency = _mapping(document.get("concurrency"), "publisher workflow concurrency")
+    if workflow_name == "hf-space-deploy":
+        expected_concurrency = {
+            "group": "hf-space-deploy-${{ github.repository }}-production",
+            "cancel-in-progress": False,
+        }
+    else:
+        expected_concurrency = {
+            "group": (
+                "hf-static-space-${{ github.repository }}-"
+                "${{ github.event_name == 'pull_request' && format('pr-{0}', "
+                "github.event.pull_request.number) || 'production' }}"
+            ),
+            "cancel-in-progress": False,
+        }
+    if concurrency != expected_concurrency:
+        raise BoundaryError("publisher workflow concurrency is not fail-closed")
+    if _permissions(document.get("permissions"), "top-level") != STATIC_TOP_PERMISSIONS:
+        raise BoundaryError("publisher workflow top-level permissions are not exact")
+
+    jobs = _mapping(document.get("jobs"), "publisher workflow jobs")
+    if workflow_name == "hf-space-deploy":
+        if set(jobs) != {"authorize", "deploy", "measure", "attest"} or any(
+            not isinstance(job, dict) for job in jobs.values()
+        ):
+            raise BoundaryError("publisher workflow job allowlist is not exact")
+        authorize, deploy, measure, attest = (
+            jobs["authorize"],
+            jobs["deploy"],
+            jobs["measure"],
+            jobs["attest"],
+        )
+        expected_job_keys = {
+            "authorize": {
+                "name", "if", "runs-on", "timeout-minutes", "permissions", "outputs",
+                "steps",
+            },
+            "deploy": {
+                "name", "needs", "if", "runs-on", "timeout-minutes", "permissions",
+                "outputs", "steps",
+            },
+            "measure": {
+                "name", "needs", "if", "runs-on", "timeout-minutes", "permissions",
+                "outputs", "steps",
+            },
+            "attest": {
+                "name", "needs", "if", "runs-on", "timeout-minutes", "permissions",
+                "env", "steps",
+            },
+        }
+        if set(authorize) != expected_job_keys["authorize"]:
+            raise BoundaryError("publisher workflow job fields are not exact: authorize")
+        if set(deploy) != expected_job_keys["deploy"]:
+            raise BoundaryError("publisher workflow job fields are not exact: deploy")
+        if set(measure) != expected_job_keys["measure"]:
+            raise BoundaryError("publisher workflow job fields are not exact: measure")
+        if set(attest) != expected_job_keys["attest"]:
+            raise BoundaryError("publisher workflow job fields are not exact: attest")
+        if authorize.get("name") != "authorize-exact-governed-merge" or authorize.get(
+            "runs-on"
+        ) != "ubuntu-latest" or authorize.get("timeout-minutes") != 15:
+            raise BoundaryError("authorization job execution profile is not exact")
+        if deploy.get("name") != "publish-exact-protected-main" or deploy.get(
+            "runs-on"
+        ) != "ubuntu-latest" or deploy.get("timeout-minutes") != 20:
+            raise BoundaryError("publisher job execution profile is not exact")
+        if measure.get("name") != "measure-and-reauthorize-publication" or measure.get(
+            "runs-on"
+        ) != "ubuntu-latest" or measure.get("timeout-minutes") != 35:
+            raise BoundaryError("measurement job execution profile is not exact")
+        if attest.get("name") != "attest-terminal-publication-evidence" or attest.get(
+            "runs-on"
+        ) != "ubuntu-latest" or attest.get("timeout-minutes") != 25:
+            raise BoundaryError("attestation job execution profile is not exact")
+        if authorize.get("if") != "github.ref == 'refs/heads/main'":
+            raise BoundaryError("authorization job is not protected-main push-only")
+        if deploy.get("if") != "needs.authorize.result == 'success'":
+            raise BoundaryError("publisher job trigger is not exact")
+        if measure.get("if") != (
+            "always() && needs.authorize.result == 'success' && "
+            "needs.deploy.result == 'success'"
+        ):
+            raise BoundaryError("measurement job trigger is not exact")
+        if attest.get("if") != "always() && needs.authorize.result == 'success'":
+            raise BoundaryError("attestation job trigger is not exact")
+        if authorize.get("outputs") != {
+            "source_sha": "${{ steps.source.outputs.sha }}",
+            "artifact_name": "${{ steps.seal-input.outputs.artifact_name }}",
+            "input_manifest_sha256": "${{ steps.seal-input.outputs.manifest_sha256 }}",
+            "transport_artifact_digest": "${{ steps.authorized-input-upload.outputs.artifact-digest }}",
+        }:
+            raise BoundaryError("authorization outputs are not exact")
+        if deploy.get("outputs") != {
+            "publish_outcome": "${{ steps.publish.outcome }}",
+            "artifact_outcome": "${{ steps.publisher-artifact-gate.outputs.outcome }}",
+            "artifact_primary_outcome": "${{ steps.publisher-artifact-primary.outcome }}",
+            "artifact_retry_outcome": "${{ steps.publisher-artifact-retry.outcome }}",
+        }:
+            raise BoundaryError("publisher outputs are not exact")
+        if measure.get("outputs") != {
+            "measurement_outcome": "${{ steps.measure.outcome }}",
+            "failure_receipt_outcome": "${{ steps.deployment-failure-receipt.outcome }}",
+            "artifact_outcome": "${{ steps.measurement-artifact-gate.outputs.outcome }}",
+        }:
+            raise BoundaryError("measurement outputs are not exact")
+        if deploy.get("needs") != "authorize" or set(measure.get("needs", [])) != {
+            "authorize", "deploy"
+        }:
+            raise BoundaryError("workflow needs chain is not exact")
+        if attest.get("needs") != ["authorize", "deploy", "measure"]:
+            raise BoundaryError("attestation workflow dependency chain is not exact")
+        if _permissions(authorize.get("permissions"), "authorization job") != STATIC_AUTHORIZATION_PERMISSIONS:
+            raise BoundaryError("authorization job permissions are not exact")
+        if _permissions(deploy.get("permissions"), "publisher job") != STATIC_PUBLISHER_PERMISSIONS:
+            raise BoundaryError("publisher job permissions are not credential-free")
+        if _permissions(measure.get("permissions"), "measurement job") != STATIC_AUTHORIZATION_PERMISSIONS:
+            raise BoundaryError("measurement job permissions are not exact and read-only")
+        if _permissions(attest.get("permissions"), "attestation job") != STATIC_ATTESTATION_PERMISSIONS:
+            raise BoundaryError("attestation job permissions are not exact")
+        if attest.get("env") != {
+            "GITHUB_TOKEN": "",
+            "GH_TOKEN": "",
+            "HF_TOKEN": "",
+        }:
+            raise BoundaryError("attestation job environment is not exact")
+        for job in jobs.values():
+            _steps(job, f"publisher workflow {job.get('name')}")
+        if any(
+            "id" in step and not isinstance(step.get("id"), str)
+            for job in jobs.values()
+            for step in _steps(job, f"publisher workflow {job.get('name')}")
+        ):
+            raise BoundaryError("publisher workflow step ids are not exact")
+        secret_expression = re.compile(r"(?i)\bsecrets\b")
+        secret_values = [
+            value
+            for _path, value in _walk_scalars(document)
+            if isinstance(value, str) and secret_expression.search(value)
+        ]
+        if secret_values != [HF_SECRET]:
+            raise BoundaryError("publisher workflow isolated secret usage is not exact")
+        github_token_expression = re.compile(r"(?i)\bgithub\s*\.\s*token\b")
+        github_bracket_expression = re.compile(r"(?i)\bgithub\s*\[")
+        github_whole_context = re.compile(r"(?i)\b(?:tojson|fromjson)\s*\(\s*github\s*\)")
+        for path, value in _walk_scalars(document):
+            if path and path[-1] == "HF_TOKEN" and value not in {"", HF_SECRET}:
+                raise BoundaryError("HF_TOKEN is materialized outside the exact secret boundary")
+            if path and path[-1] == "secrets":
+                raise BoundaryError("publisher workflow inherits or passes a secrets mapping")
+            if isinstance(value, str) and (
+                github_bracket_expression.search(value)
+                or github_whole_context.search(value)
+                or (github_token_expression.search(value) and value != NATIVE_GOVERNANCE_TOKEN)
+            ):
+                raise BoundaryError("publisher workflow token consumption is not isolated")
+        if any(
+            value == NATIVE_GOVERNANCE_TOKEN
+            for _path, value in _walk_scalars(deploy)
+        ):
+            raise BoundaryError("publisher workflow uses repository token in mutation job")
+        return
+
+    jobs = _mapping(document.get("jobs"), "publisher workflow jobs")
+    if set(jobs) != STATIC_JOB_IDS or any(
+        not isinstance(job, dict) for job in jobs.values()
+    ):
+        raise BoundaryError("publisher workflow job allowlist is not exact")
+    validate, dco = jobs["validate"], jobs["dco"]
+    authorize, deploy = jobs["authorize"], jobs["deploy"]
+    measure, attest = jobs["measure"], jobs["attest"]
+    expected_job_keys = {
+        "validate": {"name", "runs-on", "timeout-minutes", "steps"},
+        "dco": {"name", "runs-on", "timeout-minutes", "steps"},
+        "authorize": {
+            "name", "if", "needs", "permissions", "runs-on",
+            "timeout-minutes", "outputs", "steps",
+        },
+        "deploy": {
+            "name", "if", "needs", "permissions", "runs-on",
+            "timeout-minutes", "env", "outputs", "steps",
+        },
+        "measure": {
+            "name", "if", "needs", "permissions", "runs-on",
+            "timeout-minutes", "outputs", "steps",
+        },
+        "attest": {
+            "name", "if", "needs", "permissions", "runs-on",
+            "timeout-minutes", "env", "steps",
+        },
+    }
+    expected_job_names = {
+        "validate": "validate-static-space",
+        "dco": "DCO",
+        "authorize": "authorize-exact-governed-merge",
+        "deploy": "publish-exact-protected-main",
+        "measure": "measure-exact-publication",
+        "attest": "attest-exact-publication",
+    }
+    expected_timeouts = {
+        "validate": 10, "dco": 10, "authorize": 10,
+        "deploy": 10, "measure": 20, "attest": 10,
+    }
+    for job_id, job in jobs.items():
+        if set(job) != expected_job_keys[job_id]:
+            raise BoundaryError(f"publisher workflow job fields are not exact: {job_id}")
+        if (
+            job.get("name") != expected_job_names[job_id]
+            or job.get("runs-on") != "ubuntu-latest"
+            or job.get("timeout-minutes") != expected_timeouts[job_id]
+        ):
+            raise BoundaryError(f"publisher workflow job execution profile is not exact: {job_id}")
+    if "permissions" in validate or "permissions" in dco:
+        raise BoundaryError("validation jobs must inherit the exact read-only profile")
+    if _permissions(authorize.get("permissions"), "authorization job") != STATIC_AUTHORIZATION_PERMISSIONS:
+        raise BoundaryError("authorization job permissions are not exact")
+    if _permissions(deploy.get("permissions"), "publisher job") != STATIC_PUBLISHER_PERMISSIONS:
+        raise BoundaryError("publisher job permissions are not credential-free")
+    if _permissions(measure.get("permissions"), "measurement job") != STATIC_AUTHORIZATION_PERMISSIONS:
+        raise BoundaryError("measurement job permissions are not exact and read-only")
+    if _permissions(attest.get("permissions"), "attestation job") != STATIC_ATTESTATION_PERMISSIONS:
+        raise BoundaryError("attestation job permissions are not exact")
+
+    if authorize.get("if") != "github.event_name == 'push' && github.ref == 'refs/heads/main'":
+        raise BoundaryError("authorization job is not protected-main-push only")
+    if deploy.get("if") != (
+        "always() && needs.authorize.result == 'success' "
+        "&& needs.authorize.outputs.authorization-outcome == 'success' "
+        "&& needs.authorize.outputs.authorization-evidence-outcome == 'success' "
+        "&& needs.authorize.outputs.publisher-digests-outcome == 'success' "
+        "&& needs.authorize.outputs.publisher-input-evidence-outcome == 'success'"
+    ):
+        raise BoundaryError("publisher job is not bound to exact authorization outputs")
+    if measure.get("if") != (
+        "always() && needs.authorize.result == 'success' "
+        "&& needs.deploy.outputs.publisher-freshness-outcome == 'success' "
+        "&& needs.deploy.outputs.publish-outcome == 'success' "
+        "&& needs.deploy.outputs.publisher-evidence-outcome == 'success'"
+    ):
+        raise BoundaryError("measurement job is not bound to exact publisher outputs")
+    if attest.get("if") != (
+        "always() && github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    ):
+        raise BoundaryError("attestation job is not protected-main-push only")
+    if authorize.get("needs") != ["validate", "dco"]:
+        raise BoundaryError("authorization job dependency chain is wrong")
+    if deploy.get("needs") != ["authorize"] or measure.get("needs") != ["authorize", "deploy"]:
+        raise BoundaryError("publisher or measurement job dependency chain is wrong")
+    if attest.get("needs") != ["authorize", "deploy", "measure"]:
+        raise BoundaryError("attestation job dependency chain is wrong")
+
+    expected_outputs = {
+        "authorize": {
+            "authorization-outcome": "${{ steps.authorization.outcome }}",
+            "authorization-evidence-outcome": "${{ steps.authorization-evidence.outcome }}",
+            "bundle-outcome": "${{ steps.bundle.outcome }}",
+            "publisher-input-outcome": "${{ steps.publisher-input.outcome }}",
+            "publisher-digests-outcome": "${{ steps.publisher-digests.outcome }}",
+            "publisher-input-evidence-outcome": "${{ steps.publisher-input-evidence.outcome }}",
+            "publisher-input-artifact-name": "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}",
+            "publisher_script_sha256": "${{ steps.publisher-digests.outputs.publisher_script_sha256 }}",
+            "publisher_lock_sha256": "${{ steps.publisher-digests.outputs.publisher_lock_sha256 }}",
+            "publisher_config_sha256": "${{ steps.publisher-digests.outputs.publisher_config_sha256 }}",
+            "authorization_sha256": "${{ steps.publisher-digests.outputs.authorization_sha256 }}",
+            "bundle_manifest_sha256": "${{ steps.publisher-digests.outputs.bundle_manifest_sha256 }}",
+        },
+        "deploy": {
+            "publisher-input-outcome": "${{ steps.publisher-input.outcome }}",
+            "publisher-rebind-outcome": "${{ steps.publisher-rebind.outcome }}",
+            "publisher-environment-outcome": "${{ steps.publisher-environment.outcome }}",
+            "publish-outcome": "${{ steps.publish.outcome }}",
+            "publisher-evidence-outcome": "${{ steps.publisher-evidence.outcome }}",
+            "publisher-freshness-outcome": "${{ steps.publisher-freshness.outcome }}",
+            "publication-artifact-name": "hf-static-space-publication-${{ github.sha }}-${{ github.run_attempt }}",
+        },
+        "measure": {
+            "measurement-hardening-outcome": "${{ steps.measurement-hardening.outcome }}",
+            "measurement-input-outcome": "${{ steps.measurement-input.outcome }}",
+            "measurement-rebind-outcome": "${{ steps.measurement-rebind.outcome }}",
+            "measurement-publisher-evidence-outcome": "${{ steps.measurement-publisher-evidence.outcome }}",
+            "measurement-environment-outcome": "${{ steps.measurement-environment.outcome }}",
+            "measurement-outcome": "${{ steps.measurement.outcome }}",
+            "measurement-evidence-outcome": "${{ steps.measurement-evidence.outcome }}",
+            "measurement-artifact-name": "hf-static-space-measurement-${{ github.sha }}-${{ github.run_attempt }}",
+        },
+    }
+    for job_id, expected in expected_outputs.items():
+        if _mapping(jobs[job_id].get("outputs"), f"{job_id} outputs") != expected:
+            raise BoundaryError(f"publisher workflow output map is not exact: {job_id}")
+    if deploy.get("env") != {
+        "PUBLISHER_PYTHON": "python",
+        "SOURCE_SHA": "${{ github.sha }}",
+    } or attest.get("env") != {"SOURCE_SHA": "${{ github.sha }}"}:
+        raise BoundaryError("publisher or attestation job environment is not exact")
+
+    canonical_steps = {
+        "validate": [
+            "Harden runner", "Checkout exact event head", "Set up Python",
+            "Verify exact checkout and release contracts",
+            "Validate exact-head pull-request body evidence",
+        ],
+        "dco": [
+            "Harden runner", "Checkout exact event head with history",
+            "Set up exact Python", "Validate every exact-range commit DCO trailer",
+        ],
+        "authorize": [
+            "Harden runner", "Checkout exact protected-main event", "Set up exact Python",
+            "Authorize the exact governed merge without HF credentials",
+            "Build and validate exact source-bound publisher input",
+            "Stage immutable publisher input",
+            "Bind five exact publisher inputs outside the artifact channel",
+            "Upload exact publisher input",
+            "Upload governed-merge authorization evidence",
+            "Require exact governed authorization",
+        ],
+        "deploy": [
+            "Harden runner", "Download exact authorized publisher input",
+            "Rebind five publisher inputs before interpretation or credentials",
+            "Set up exact Python",
+            "Install pinned Hugging Face client without repository credentials",
+            "Classify publisher-environment failure before credential materialization",
+            "Reconfirm public main at exact source revision without credentials",
+            "Classify public-main freshness failure before mutation",
+            "Publish exact bundle with only the Hugging Face credential",
+            "Upload publisher outcome before any OIDC privilege exists",
+            "Require exact publisher success",
+        ],
+        "measure": [
+            "Harden runner", "Download exact authorized publisher input",
+            "Rebind five measurement inputs before interpretation or credentials",
+            "Download exact publisher outcome", "Set up exact Python",
+            "Measure public bytes and reauthorize current main without HF credentials",
+            "Upload exact public measurement before OIDC",
+            "Require exact public measurement",
+        ],
+        "attest": [
+            "Harden runner", "Checkout exact protected-main evidence synthesizer",
+            "Set up exact Python", "Download exact publisher outcome",
+            "Download exact public measurement",
+            "Attest canonical exact-revision measurement with GitHub OIDC",
+            "Synthesize final receipt or exact workflow-stage failure",
+            "Upload terminal governed evidence",
+            "Synthesize terminal artifact-upload failure",
+            "Upload terminal failure evidence", "Require terminal governed success",
+        ],
+    }
+    step_keys: dict[tuple[str, str], frozenset[str]] = {}
+    def allow(job_id: str, names: list[str], *keys: str) -> None:
+        for step_name in names:
+            step_keys[(job_id, step_name)] = frozenset(("name", *keys))
+
+    allow("validate", ["Harden runner", "Checkout exact event head", "Set up Python"], "uses", "with")
+    allow("validate", ["Verify exact checkout and release contracts"], "env", "run")
+    allow("validate", ["Validate exact-head pull-request body evidence"], "if", "env", "run")
+    allow("dco", ["Harden runner", "Checkout exact event head with history", "Set up exact Python"], "uses", "with")
+    allow("dco", ["Validate every exact-range commit DCO trailer"], "env", "run")
+    allow("authorize", ["Harden runner", "Checkout exact protected-main event", "Set up exact Python"], "uses", "with")
+    allow("authorize", ["Authorize the exact governed merge without HF credentials"], "id", "continue-on-error", "env", "run")
+    allow("authorize", ["Build and validate exact source-bound publisher input", "Bind five exact publisher inputs outside the artifact channel"], "id", "if", "continue-on-error", "env", "run")
+    allow("authorize", ["Stage immutable publisher input"], "id", "if", "continue-on-error", "run")
+    allow("authorize", ["Upload exact publisher input", "Upload governed-merge authorization evidence"], "id", "if", "continue-on-error", "uses", "with")
+    allow("authorize", ["Require exact governed authorization"], "if", "run")
+    allow("deploy", ["Harden runner"], "uses", "with")
+    allow("deploy", ["Download exact authorized publisher input"], "id", "continue-on-error", "uses", "with")
+    allow("deploy", ["Rebind five publisher inputs before interpretation or credentials", "Install pinned Hugging Face client without repository credentials", "Reconfirm public main at exact source revision without credentials", "Publish exact bundle with only the Hugging Face credential"], "id", "if", "continue-on-error", "env", "run")
+    allow("deploy", ["Set up exact Python"], "if", "uses", "with")
+    allow("deploy", ["Classify publisher-environment failure before credential materialization", "Classify public-main freshness failure before mutation", "Require exact publisher success"], "if", "run")
+    allow("deploy", ["Upload publisher outcome before any OIDC privilege exists"], "id", "if", "continue-on-error", "uses", "with")
+    allow("measure", ["Harden runner"], "id", "continue-on-error", "uses", "with")
+    allow("measure", ["Download exact authorized publisher input", "Download exact publisher outcome", "Set up exact Python"], "id", "if", "continue-on-error", "uses", "with")
+    allow("measure", ["Rebind five measurement inputs before interpretation or credentials", "Measure public bytes and reauthorize current main without HF credentials"], "id", "if", "continue-on-error", "env", "run")
+    allow("measure", ["Upload exact public measurement before OIDC"], "id", "if", "continue-on-error", "uses", "with")
+    allow("measure", ["Require exact public measurement"], "if", "run")
+    allow("attest", ["Harden runner"], "id", "continue-on-error", "uses", "env", "with")
+    allow("attest", ["Checkout exact protected-main evidence synthesizer", "Set up exact Python"], "id", "if", "continue-on-error", "uses", "env", "with")
+    allow("attest", ["Download exact publisher outcome", "Download exact public measurement"], "id", "if", "continue-on-error", "uses", "env", "with")
+    allow("attest", ["Attest canonical exact-revision measurement with GitHub OIDC"], "id", "if", "continue-on-error", "uses", "with")
+    allow("attest", ["Synthesize final receipt or exact workflow-stage failure"], "id", "if", "continue-on-error", "env", "run")
+    allow("attest", ["Synthesize terminal artifact-upload failure"], "if", "env", "run")
+    allow("attest", ["Upload terminal governed evidence"], "id", "if", "continue-on-error", "uses", "env", "with")
+    allow("attest", ["Upload terminal failure evidence"], "if", "continue-on-error", "uses", "env", "with")
+    allow("attest", ["Require terminal governed success"], "if", "env", "run")
+
+    expected_ids = {
+        ("authorize", "Authorize the exact governed merge without HF credentials"): "authorization",
+        ("authorize", "Build and validate exact source-bound publisher input"): "bundle",
+        ("authorize", "Stage immutable publisher input"): "publisher-input",
+        ("authorize", "Bind five exact publisher inputs outside the artifact channel"): "publisher-digests",
+        ("authorize", "Upload exact publisher input"): "publisher-input-evidence",
+        ("authorize", "Upload governed-merge authorization evidence"): "authorization-evidence",
+        ("deploy", "Download exact authorized publisher input"): "publisher-input",
+        ("deploy", "Rebind five publisher inputs before interpretation or credentials"): "publisher-rebind",
+        ("deploy", "Install pinned Hugging Face client without repository credentials"): "publisher-environment",
+        ("deploy", "Reconfirm public main at exact source revision without credentials"): "publisher-freshness",
+        ("deploy", "Publish exact bundle with only the Hugging Face credential"): "publish",
+        ("deploy", "Upload publisher outcome before any OIDC privilege exists"): "publisher-evidence",
+        ("measure", "Measure public bytes and reauthorize current main without HF credentials"): "measurement",
+        ("measure", "Upload exact public measurement before OIDC"): "measurement-evidence",
+        ("measure", "Harden runner"): "measurement-hardening",
+        ("measure", "Download exact authorized publisher input"): "measurement-input",
+        ("measure", "Rebind five measurement inputs before interpretation or credentials"): "measurement-rebind",
+        ("measure", "Download exact publisher outcome"): "measurement-publisher-evidence",
+        ("measure", "Set up exact Python"): "measurement-environment",
+        ("attest", "Harden runner"): "attestation-hardening",
+        ("attest", "Checkout exact protected-main evidence synthesizer"): "attestation-checkout",
+        ("attest", "Set up exact Python"): "attestation-environment",
+        ("attest", "Download exact publisher outcome"): "publisher-evidence-download",
+        ("attest", "Download exact public measurement"): "measurement-evidence-download",
+        ("attest", "Attest canonical exact-revision measurement with GitHub OIDC"): "oidc",
+        ("attest", "Upload terminal governed evidence"): "terminal-evidence",
+        ("attest", "Synthesize final receipt or exact workflow-stage failure"): "workflow-outcome",
+    }
+    expected_ifs = {
+        ("validate", "Validate exact-head pull-request body evidence"): "github.event_name == 'pull_request'",
+        ("authorize", "Build and validate exact source-bound publisher input"): "steps.authorization.outcome == 'success'",
+        ("authorize", "Stage immutable publisher input"): "steps.authorization.outcome == 'success' && steps.bundle.outcome == 'success'",
+        ("authorize", "Bind five exact publisher inputs outside the artifact channel"): "steps.publisher-input.outcome == 'success'",
+        ("authorize", "Upload exact publisher input"): "steps.publisher-input.outcome == 'success' && steps.publisher-digests.outcome == 'success'",
+        ("authorize", "Upload governed-merge authorization evidence"): "always()",
+        ("authorize", "Require exact governed authorization"): "always()",
+        ("deploy", "Rebind five publisher inputs before interpretation or credentials"): "steps.publisher-input.outcome == 'success'",
+        ("deploy", "Set up exact Python"): "steps.publisher-rebind.outcome == 'success'",
+        ("deploy", "Install pinned Hugging Face client without repository credentials"): "steps.publisher-rebind.outcome == 'success'",
+        ("deploy", "Classify publisher-environment failure before credential materialization"): "always() && steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome != 'success'",
+        ("deploy", "Reconfirm public main at exact source revision without credentials"): "steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome == 'success'",
+        ("deploy", "Classify public-main freshness failure before mutation"): "always() && steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome == 'success' && steps.publisher-freshness.outcome != 'success'",
+        ("deploy", "Publish exact bundle with only the Hugging Face credential"): "steps.publisher-rebind.outcome == 'success' && steps.publisher-environment.outcome == 'success' && steps.publisher-freshness.outcome == 'success'",
+        ("deploy", "Upload publisher outcome before any OIDC privilege exists"): "always()",
+        ("deploy", "Require exact publisher success"): "always()",
+        ("measure", "Upload exact public measurement before OIDC"): "always()",
+        ("measure", "Require exact public measurement"): "always()",
+        ("measure", "Download exact authorized publisher input"): "steps.measurement-hardening.outcome == 'success'",
+        ("measure", "Rebind five measurement inputs before interpretation or credentials"): "steps.measurement-input.outcome == 'success'",
+        ("measure", "Download exact publisher outcome"): "steps.measurement-rebind.outcome == 'success'",
+        ("measure", "Set up exact Python"): "steps.measurement-publisher-evidence.outcome == 'success'",
+        ("measure", "Measure public bytes and reauthorize current main without HF credentials"): "steps.measurement-environment.outcome == 'success'",
+        ("attest", "Checkout exact protected-main evidence synthesizer"): "steps.attestation-hardening.outcome == 'success'",
+        ("attest", "Set up exact Python"): "steps.attestation-checkout.outcome == 'success'",
+        ("attest", "Download exact publisher outcome"): "always() && needs.deploy.outputs.publication-artifact-name != ''",
+        ("attest", "Download exact public measurement"): "always() && needs.measure.outputs.measurement-artifact-name != ''",
+        ("attest", "Attest canonical exact-revision measurement with GitHub OIDC"): "steps.attestation-hardening.outcome == 'success' && steps.attestation-checkout.outcome == 'success' && steps.attestation-environment.outcome == 'success' && needs.measure.outputs.measurement-hardening-outcome == 'success' && needs.measure.outputs.measurement-input-outcome == 'success' && needs.measure.outputs.measurement-rebind-outcome == 'success' && needs.measure.outputs.measurement-publisher-evidence-outcome == 'success' && needs.measure.outputs.measurement-environment-outcome == 'success' && needs.measure.outputs.measurement-outcome == 'success' && needs.measure.outputs.measurement-evidence-outcome == 'success' && steps.publisher-evidence-download.outcome == 'success' && steps.measurement-evidence-download.outcome == 'success'",
+        ("attest", "Synthesize final receipt or exact workflow-stage failure"): "always()",
+        ("attest", "Upload terminal governed evidence"): "always()",
+        ("attest", "Synthesize terminal artifact-upload failure"): "always() && steps.terminal-evidence.outcome != 'success'",
+        ("attest", "Upload terminal failure evidence"): "always() && steps.terminal-evidence.outcome != 'success'",
+        ("attest", "Require terminal governed success"): "always()",
+    }
+
+    all_steps: list[tuple[str, dict]] = []
+    for job_id, job in jobs.items():
+        steps = _steps(job, f"job {job_id}")
+        names = [step.get("name") for step in steps]
+        if names != canonical_steps[job_id]:
+            raise BoundaryError(f"publisher workflow canonical steps are not exact: {job_id}")
+        for step in steps:
+            key = (job_id, step["name"])
+            if frozenset(step) != step_keys[key]:
+                raise BoundaryError(f"publisher workflow step fields are not exact: {job_id}/{step['name']}")
+            if "id" in step and step["id"] != expected_ids.get(key):
+                raise BoundaryError(f"publisher workflow step id is not exact: {job_id}/{step['name']}")
+            if "if" in step:
+                expected_if = expected_ifs.get(key)
+                if step["if"] != expected_if:
+                    raise BoundaryError(
+                        f"publisher workflow step condition is not exact: "
+                        f"{job_id}/{step['name']}"
+                    )
+            if "continue-on-error" in step and step["continue-on-error"] is not True:
+                raise BoundaryError(f"publisher workflow continuation policy is not exact: {job_id}/{step['name']}")
+            all_steps.append((job_id, step))
+
+    action_specs = {
+        ("validate", "Harden runner"): (HARDEN_RUNNER, {"egress-policy": "audit"}),
+        ("validate", "Checkout exact event head"): (CHECKOUT, {"ref": "${{ github.event.pull_request.head.sha || github.sha }}", "persist-credentials": False, "fetch-depth": 1}),
+        ("validate", "Set up Python"): (SETUP_PYTHON, {"python-version": "3.12.13"}),
+        ("dco", "Harden runner"): (HARDEN_RUNNER, {"egress-policy": "audit"}),
+        ("dco", "Checkout exact event head with history"): (CHECKOUT, {"ref": "${{ github.event.pull_request.head.sha || github.sha }}", "persist-credentials": False, "fetch-depth": 0}),
+        ("dco", "Set up exact Python"): (SETUP_PYTHON, {"python-version": "3.12.13"}),
+        ("authorize", "Harden runner"): (HARDEN_RUNNER, {"egress-policy": "audit"}),
+        ("authorize", "Checkout exact protected-main event"): (CHECKOUT, {"ref": "${{ github.sha }}", "persist-credentials": False, "fetch-depth": 1}),
+        ("authorize", "Set up exact Python"): (SETUP_PYTHON, {"python-version": "3.12.13"}),
+        ("authorize", "Upload exact publisher input"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/publisher-input", "if-no-files-found": "error", "include-hidden-files": True, "retention-days": publisher_input_retention_days}),
+        ("authorize", "Upload governed-merge authorization evidence"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-authorization-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/governed-merge.json\n${{ runner.temp }}/governed-merge-failure.json\n", "if-no-files-found": "error", "retention-days": 90}),
+        ("deploy", "Harden runner"): (HARDEN_RUNNER, {"egress-policy": "audit"}),
+        ("deploy", "Download exact authorized publisher input"): (DOWNLOAD_ARTIFACT, {"name": "${{ needs.authorize.outputs.publisher-input-artifact-name }}", "path": "${{ runner.temp }}/publisher-input"}),
+        ("deploy", "Set up exact Python"): (SETUP_PYTHON, {"python-version": "3.12.13"}),
+        ("deploy", "Upload publisher outcome before any OIDC privilege exists"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-publication-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/publication-evidence", "if-no-files-found": "error", "retention-days": 90}),
+        ("measure", "Harden runner"): (HARDEN_RUNNER, {"egress-policy": "audit"}),
+        ("measure", "Download exact authorized publisher input"): (DOWNLOAD_ARTIFACT, {"name": "${{ needs.authorize.outputs.publisher-input-artifact-name }}", "path": "${{ runner.temp }}/publisher-input"}),
+        ("measure", "Download exact publisher outcome"): (DOWNLOAD_ARTIFACT, {"name": "${{ needs.deploy.outputs.publication-artifact-name }}", "path": "${{ runner.temp }}/publication-evidence"}),
+        ("measure", "Set up exact Python"): (SETUP_PYTHON, {"python-version": "3.12.13"}),
+        ("measure", "Upload exact public measurement before OIDC"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-measurement-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/measurement-evidence", "if-no-files-found": "error", "retention-days": 90}),
+        ("attest", "Harden runner"): (HARDEN_RUNNER, {"egress-policy": "audit"}),
+        ("attest", "Checkout exact protected-main evidence synthesizer"): (CHECKOUT, {"ref": "${{ github.sha }}", "persist-credentials": False, "fetch-depth": 1}),
+        ("attest", "Set up exact Python"): (SETUP_PYTHON, {"python-version": "3.12.13"}),
+        ("attest", "Download exact publisher outcome"): (DOWNLOAD_ARTIFACT, {"name": "${{ needs.deploy.outputs.publication-artifact-name }}", "path": "${{ runner.temp }}/publication-evidence"}),
+        ("attest", "Download exact public measurement"): (DOWNLOAD_ARTIFACT, {"name": "${{ needs.measure.outputs.measurement-artifact-name }}", "path": "${{ runner.temp }}/measurement-evidence"}),
+        ("attest", "Attest canonical exact-revision measurement with GitHub OIDC"): (ATTEST_PROVENANCE, {"subject-path": "${{ runner.temp }}/measurement-evidence/hf-live-attestation.json"}),
+        ("attest", "Upload terminal governed evidence"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-terminal-evidence-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/publication-evidence\n${{ runner.temp }}/measurement-evidence\n${{ runner.temp }}/terminal-evidence\n", "if-no-files-found": "error", "retention-days": 90}),
+        ("attest", "Upload terminal failure evidence"): (UPLOAD_ARTIFACT, {"name": "hf-static-space-terminal-upload-failure-${{ github.sha }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/terminal-evidence/hf-workflow-stage-failure.json", "if-no-files-found": "error", "retention-days": 90}),
+    }
+    structured_uses = []
+    for job_id, step in all_steps:
+        if "uses" not in step:
+            continue
+        key = (job_id, step["name"])
+        if key not in action_specs:
+            raise BoundaryError(f"publisher workflow action binding is not exact: {job_id}/{step['name']}")
+        expected_action, expected_inputs = action_specs[key]
+        observed_inputs = _mapping(step.get("with"), f"{job_id}/{step['name']} inputs")
+        if step["uses"] != expected_action or not _exact_input_map(
+            observed_inputs, expected_inputs
+        ):
+            raise BoundaryError(f"publisher workflow action binding is not exact: {job_id}/{step['name']}")
+        structured_uses.append(step["uses"])
+    raw_uses = ANY_USES.findall(workflow)
+    if not structured_uses or sorted(raw_uses) != sorted(structured_uses):
+        raise BoundaryError("publisher workflow decoded action inventory differs from source spelling")
+    if any(value.startswith("./") or PINNED_USES.fullmatch(value) is None for value in structured_uses):
+        raise BoundaryError("publisher workflow contains an unpinned, local, or reusable action")
+
+    # Evaluate global credential-expression isolation before exact step-shape
+    # checks so dynamic or whole-context expressions fail at the governing
+    # boundary instead of producing a narrower command diagnostic.
+    secret_expression = re.compile(r"(?i)\bsecrets\b")
+    secret_values = [
+        value
+        for _path, value in _walk_scalars(document)
+        if isinstance(value, str) and secret_expression.search(value)
+    ]
+    if secret_values != [HF_SECRET]:
+        raise BoundaryError("HF secret consumption is not isolated to one exact mutation step")
+
+    github_token_expression = re.compile(r"(?i)\bgithub\s*\.\s*token\b")
+    github_bracket_expression = re.compile(r"(?i)\bgithub\s*\[")
+    github_whole_context = re.compile(
+        r"(?i)\b(?:tojson|fromjson)\s*\(\s*github\s*\)"
+    )
+    for path, value in _walk_scalars(document):
+        if path and path[-1] == "HF_TOKEN" and value not in {"", HF_SECRET}:
+            raise BoundaryError("HF_TOKEN is materialized outside the exact secret boundary")
+        if path and path[-1] == "secrets":
+            raise BoundaryError("publisher workflow inherits or passes a secrets mapping")
+        if isinstance(value, str) and (
+            github_bracket_expression.search(value)
+            or github_whole_context.search(value)
+            or (
+                github_token_expression.search(value)
+                and value != NATIVE_GOVERNANCE_TOKEN
+            )
+        ):
+            raise BoundaryError("GitHub token consumption is not one exact direct expression")
+    for _path, value in _walk_scalars(deploy):
+        if value == NATIVE_GOVERNANCE_TOKEN:
+            raise BoundaryError("publisher job contains a GitHub repository credential")
+
+    guard = _named_step(
+        authorize, "Authorize the exact governed merge without HF credentials"
+    )
+    if guard.get("env") != {
+        "GITHUB_TOKEN": NATIVE_GOVERNANCE_TOKEN,
+        "SOURCE_SHA": "${{ github.sha }}",
+    }:
+        raise BoundaryError("authorization step token binding is not exact")
+    guard_commands = _logical_shell_commands(guard.get("run"), "authorization step")
+    expected_guard = [
+        "python",
+        "-I",
+        "scripts/hf_static_space.py",
+        "guard",
+        "--source-sha",
+        "$SOURCE_SHA",
+        "--event",
+        "$GITHUB_EVENT_PATH",
+        "--output",
+        "$RUNNER_TEMP/governed-merge.json",
+        "--failure-output",
+        "$RUNNER_TEMP/governed-merge-failure.json",
+    ]
+    if (
+        guard_commands[:2]
+        != [
+            "set -euo pipefail",
+            'test "$(git rev-parse HEAD)" = "$SOURCE_SHA"',
+        ]
+        or len(guard_commands) != 3
+        or _command_tokens(guard_commands[2], "authorization step") != expected_guard
+    ):
+        raise BoundaryError("authorization command is not exact and mandatory")
+
+    publisher_freshness = _named_step(
+        deploy, "Reconfirm public main at exact source revision without credentials"
+    )
+    if publisher_freshness.get("env") != {
+        "GITHUB_TOKEN": "",
+        "GH_TOKEN": "",
+        "HF_TOKEN": "",
+    }:
+        raise BoundaryError("publisher freshness credential boundary is not exact")
+    expected_publisher_freshness = [
+        "set -euo pipefail",
+        'mkdir -p "$RUNNER_TEMP/public-main-home" "$RUNNER_TEMP/public-main-cache" "$RUNNER_TEMP/publication-evidence"',
+        'chmod 0700 "$RUNNER_TEMP/public-main-home" "$RUNNER_TEMP/public-main-cache"',
+        '/usr/bin/env -i HOME="$RUNNER_TEMP/public-main-home" HF_HOME="$RUNNER_TEMP/public-main-cache" XDG_CACHE_HOME="$RUNNER_TEMP/public-main-cache" PATH="$RUNNER_TEMP/hf-publisher-venv/bin:/usr/bin:/bin" LANG="C.UTF-8" LC_ALL="C.UTF-8" PYTHONIOENCODING="utf-8" "$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" fresh-main --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/publication-evidence/github-main-preflight-freshness.json"',
+    ]
+    if _logical_shell_commands(
+        publisher_freshness.get("run"), "publisher freshness"
+    ) != expected_publisher_freshness:
+        raise BoundaryError("publisher freshness command is not exact and mandatory")
+    freshness_failure = _named_step(
+        deploy, "Classify public-main freshness failure before mutation"
+    )
+    if _logical_shell_commands(
+        freshness_failure.get("run"), "publisher freshness failure"
+    ) != [
+        "set -euo pipefail",
+        '"$PUBLISHER_PYTHON" -I "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py" stage-failure --source-sha "$SOURCE_SHA" --stage publisher_freshness --output "$RUNNER_TEMP/publication-evidence/hf-workflow-stage-failure.json"',
+    ]:
+        raise BoundaryError("publisher freshness failure command is not exact and mandatory")
+
+    mutation = _named_step(
+        deploy, "Publish exact bundle with only the Hugging Face credential"
+    )
+    if mutation.get("env") != {
+        "GITHUB_TOKEN": "",
+        "GH_TOKEN": "",
+        "HF_TOKEN": HF_SECRET,
+    }:
+        raise BoundaryError("publisher mutation credential boundary is not exact")
+    mutation_commands = _logical_shell_commands(mutation.get("run"), "publisher mutation")
+    expected_mutation = [
+        "/usr/bin/env",
+        "-i",
+        "HOME=$RUNNER_TEMP/hf-publisher-home",
+        "HF_HOME=$RUNNER_TEMP/hf-publisher-cache",
+        "XDG_CACHE_HOME=$RUNNER_TEMP/hf-publisher-cache",
+        "PATH=$RUNNER_TEMP/hf-publisher-venv/bin:/usr/bin:/bin",
+        "LANG=C.UTF-8",
+        "LC_ALL=C.UTF-8",
+        "PYTHONIOENCODING=utf-8",
+        "HF_TOKEN=$HF_TOKEN",
+        "$PUBLISHER_PYTHON",
+        "-I",
+        "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py",
+        "deploy",
+        "--source-sha",
+        "$SOURCE_SHA",
+        "--bundle",
+        "$RUNNER_TEMP/publisher-input/hf-static-space",
+        "--authorization",
+        "$RUNNER_TEMP/publisher-input/governed-merge.json",
+        "--result",
+        "$RUNNER_TEMP/publication-evidence/hf-deploy-result.json",
+        "--failure-output",
+        "$RUNNER_TEMP/publication-evidence/hf-publication-failure.json",
+        "--freshness-output",
+        "$RUNNER_TEMP/publication-evidence/github-main-freshness.json",
+    ]
+    if (
+        mutation_commands[:3] != [
+            "set -euo pipefail",
+            'mkdir -p "$RUNNER_TEMP/hf-publisher-home" "$RUNNER_TEMP/hf-publisher-cache"',
+            'chmod 0700 "$RUNNER_TEMP/hf-publisher-home" "$RUNNER_TEMP/hf-publisher-cache"',
+        ]
+        or len(mutation_commands) != 4
+        or _command_tokens(mutation_commands[3], "publisher mutation") != expected_mutation
+    ):
+        raise BoundaryError("publisher mutation command is not exact and mandatory")
+
+    publisher_success = _named_step(deploy, "Require exact publisher success")
+    if _logical_shell_commands(
+        publisher_success.get("run"), "publisher success"
+    ) != [
+        "set -euo pipefail",
+        'test "${{ steps.publisher-input.outcome }}" = "success"',
+        'test "${{ steps.publisher-rebind.outcome }}" = "success"',
+        'test "${{ steps.publisher-environment.outcome }}" = "success"',
+        'test "${{ steps.publisher-freshness.outcome }}" = "success"',
+        'test "${{ steps.publish.outcome }}" = "success"',
+        'test "${{ steps.publisher-evidence.outcome }}" = "success"',
+    ]:
+        raise BoundaryError("publisher success command is not exact and mandatory")
+
+    measurement = _named_step(
+        measure, "Measure public bytes and reauthorize current main without HF credentials"
+    )
+    if measurement.get("env") != {
+        "GITHUB_TOKEN": NATIVE_GOVERNANCE_TOKEN,
+        "HF_TOKEN": "",
+        "SOURCE_SHA": "${{ github.sha }}",
+    }:
+        raise BoundaryError("measurement credential boundary is not exact")
+    measurement_commands = _logical_shell_commands(
+        measurement.get("run"), "measurement step"
+    )
+    expected_measurement = [
+        "python",
+        "-I",
+        "$RUNNER_TEMP/publisher-input/scripts/hf_static_space.py",
+        "attest",
+        "--source-sha",
+        "$SOURCE_SHA",
+        "--bundle",
+        "$RUNNER_TEMP/publisher-input/hf-static-space",
+        "--authorization",
+        "$RUNNER_TEMP/publisher-input/governed-merge.json",
+        "--event",
+        "$GITHUB_EVENT_PATH",
+        "--authorization-output",
+        "$RUNNER_TEMP/measurement-evidence/post-readback-governed-merge.json",
+        "--result",
+        "$RUNNER_TEMP/publication-evidence/hf-deploy-result.json",
+        "--output",
+        "$RUNNER_TEMP/measurement-evidence/hf-live-attestation.json",
+        "--failure-output",
+        "$RUNNER_TEMP/measurement-evidence/hf-publication-partial.json",
+    ]
+    if (
+        measurement_commands[:2] != [
+            "set -euo pipefail",
+            'mkdir -p "$RUNNER_TEMP/measurement-evidence"',
+        ]
+        or len(measurement_commands) != 3
+        or _command_tokens(measurement_commands[2], "measurement step")
+        != expected_measurement
+    ):
+        raise BoundaryError("measurement command is not exact and mandatory")
+
+    oidc_environment = {
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "",
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "",
+    }
+    for step in _steps(attest, "attestation job"):
+        if step.get("name") == "Attest canonical exact-revision measurement with GitHub OIDC":
+            if "env" in step:
+                raise BoundaryError("OIDC attestation step environment is not exact")
+            continue
+        environment = _mapping(step.get("env"), f"attestation step {step.get('name')} environment")
+        if any(environment.get(key) != value for key, value in oidc_environment.items()):
+            raise BoundaryError("non-attestation step retains ambient GitHub OIDC")
+
+    _require_artifact_step(
+        authorize,
+        "Upload exact publisher input",
+        UPLOAD_ARTIFACT,
+        {
+            "name": "hf-static-space-publisher-input-${{ github.sha }}-${{ github.run_attempt }}",
+            "path": "${{ runner.temp }}/publisher-input",
+            "if-no-files-found": "error",
+            "include-hidden-files": True,
+            "retention-days": publisher_input_retention_days,
+        },
+    )
+    _require_artifact_step(
+        deploy,
+        "Download exact authorized publisher input",
+        DOWNLOAD_ARTIFACT,
+        {
+            "name": "${{ needs.authorize.outputs.publisher-input-artifact-name }}",
+            "path": "${{ runner.temp }}/publisher-input",
+        },
+    )
+    _require_artifact_step(
+        deploy,
+        "Upload publisher outcome before any OIDC privilege exists",
+        UPLOAD_ARTIFACT,
+        {
+            "name": "hf-static-space-publication-${{ github.sha }}-${{ github.run_attempt }}",
+            "path": "${{ runner.temp }}/publication-evidence",
+            "if-no-files-found": "error",
+            "retention-days": 90,
+        },
+    )
+    _require_artifact_step(
+        measure,
+        "Download exact authorized publisher input",
+        DOWNLOAD_ARTIFACT,
+        {
+            "name": "${{ needs.authorize.outputs.publisher-input-artifact-name }}",
+            "path": "${{ runner.temp }}/publisher-input",
+        },
+    )
+    _require_artifact_step(
+        measure,
+        "Download exact publisher outcome",
+        DOWNLOAD_ARTIFACT,
+        {
+            "name": "${{ needs.deploy.outputs.publication-artifact-name }}",
+            "path": "${{ runner.temp }}/publication-evidence",
+        },
+    )
+    _require_artifact_step(
+        measure,
+        "Upload exact public measurement before OIDC",
+        UPLOAD_ARTIFACT,
+        {
+            "name": "hf-static-space-measurement-${{ github.sha }}-${{ github.run_attempt }}",
+            "path": "${{ runner.temp }}/measurement-evidence",
+            "if-no-files-found": "error",
+            "retention-days": 90,
+        },
+    )
+    _require_artifact_step(
+        attest,
+        "Download exact publisher outcome",
+        DOWNLOAD_ARTIFACT,
+        {
+            "name": "${{ needs.deploy.outputs.publication-artifact-name }}",
+            "path": "${{ runner.temp }}/publication-evidence",
+        },
+    )
+    _require_artifact_step(
+        attest,
+        "Download exact public measurement",
+        DOWNLOAD_ARTIFACT,
+        {
+            "name": "${{ needs.measure.outputs.measurement-artifact-name }}",
+            "path": "${{ runner.temp }}/measurement-evidence",
+        },
+    )
+    common_terminal_outcomes = [
+        ("--authorization-outcome", "${{ needs.authorize.outputs.authorization-outcome }}"),
+        ("--authorization-evidence-outcome", "${{ needs.authorize.outputs.authorization-evidence-outcome }}"),
+        ("--bundle-outcome", "${{ needs.authorize.outputs.bundle-outcome }}"),
+        ("--publisher-input-outcome", "${{ needs.authorize.outputs.publisher-input-outcome }}"),
+        ("--publisher-digests-outcome", "${{ needs.authorize.outputs.publisher-digests-outcome }}"),
+        ("--publisher-input-evidence-outcome", "${{ needs.authorize.outputs.publisher-input-evidence-outcome }}"),
+        ("--publisher-input-download-outcome", "${{ needs.deploy.outputs.publisher-input-outcome }}"),
+        ("--publisher-rebind-outcome", "${{ needs.deploy.outputs.publisher-rebind-outcome }}"),
+        ("--publisher-environment-outcome", "${{ needs.deploy.outputs.publisher-environment-outcome }}"),
+        ("--publisher-freshness-outcome", "${{ needs.deploy.outputs.publisher-freshness-outcome }}"),
+        ("--publish-outcome", "${{ needs.deploy.outputs.publish-outcome }}"),
+        ("--publisher-evidence-outcome", "${{ needs.deploy.outputs.publisher-evidence-outcome }}"),
+        ("--publisher-evidence-download-outcome", "${{ steps.publisher-evidence-download.outcome }}"),
+        ("--measurement-hardening-outcome", "${{ needs.measure.outputs.measurement-hardening-outcome }}"),
+        ("--measurement-input-outcome", "${{ needs.measure.outputs.measurement-input-outcome }}"),
+        ("--measurement-rebind-outcome", "${{ needs.measure.outputs.measurement-rebind-outcome }}"),
+        ("--measurement-publisher-evidence-outcome", "${{ needs.measure.outputs.measurement-publisher-evidence-outcome }}"),
+        ("--measurement-environment-outcome", "${{ needs.measure.outputs.measurement-environment-outcome }}"),
+        ("--measurement-outcome", "${{ needs.measure.outputs.measurement-outcome }}"),
+        ("--success-evidence-outcome", "${{ needs.measure.outputs.measurement-evidence-outcome }}"),
+        ("--measurement-evidence-download-outcome", "${{ steps.measurement-evidence-download.outcome }}"),
+    ]
+    terminal_outcome_variants = {
+        "Synthesize final receipt or exact workflow-stage failure": common_terminal_outcomes + [
+            ("--attestation-hardening-outcome", "$ATTESTATION_HARDENING_OUTCOME"),
+            ("--attestation-checkout-outcome", "$ATTESTATION_CHECKOUT_OUTCOME"),
+            ("--attestation-environment-outcome", "$ATTESTATION_ENVIRONMENT_OUTCOME"),
+            ("--oidc-outcome", "${{ steps.oidc.outcome }}"),
+        ],
+        "Synthesize terminal artifact-upload failure": common_terminal_outcomes + [
+            ("--attestation-hardening-outcome", "${{ steps.attestation-hardening.outcome }}"),
+            ("--attestation-checkout-outcome", "${{ steps.attestation-checkout.outcome }}"),
+            ("--attestation-environment-outcome", "${{ steps.attestation-environment.outcome }}"),
+            ("--oidc-outcome", "${{ steps.oidc.outcome }}"),
+        ],
+    }
+    outcome_argument = re.compile(
+        r'^\s+(--[a-z0-9-]*outcome)\s+"([^"\r\n]+)"(?:\s*\\)?\s*$',
+        re.MULTILINE,
+    )
+    for step_name, expected_outcomes in terminal_outcome_variants.items():
+        terminal_step = _named_step(attest, step_name)
+        observed_outcomes = outcome_argument.findall(str(terminal_step.get("run", "")))
+        if observed_outcomes != expected_outcomes:
+            raise BoundaryError(f"terminal outcome synthesis is not exact: {step_name}")
+
+    oidc = _named_step(
+        attest, "Attest canonical exact-revision measurement with GitHub OIDC"
+    )
+    if oidc.get("uses") != ATTEST_PROVENANCE or _mapping(
+        oidc.get("with"), "OIDC attestation inputs"
+    ) != {"subject-path": "${{ runner.temp }}/measurement-evidence/hf-live-attestation.json"}:
+        raise BoundaryError("OIDC attestation does not bind the exact public measurement")
+
+
+def _canonical_kernel_workflow() -> str:
+    try:
+        raw = KERNEL_WORKFLOW_FIXTURE.read_bytes()
+    except OSError as error:
+        raise BoundaryError("canonical kernel workflow fixture is unavailable") from error
+    normalized = raw.replace(b"\r\n", b"\n")
+    if b"\r" in normalized or hashlib.sha256(normalized).hexdigest() != (
+        KERNEL_WORKFLOW_FIXTURE_SHA256
+    ):
+        raise BoundaryError("canonical kernel workflow fixture digest is not exact")
+    try:
+        return normalized.decode("utf-8")
+    except UnicodeError as error:
+        raise BoundaryError("canonical kernel workflow fixture is not UTF-8") from error
+
+
+def _kernel_workflow_governance_contract(workflow: str) -> None:
+    document = _workflow_document(workflow)
+    if set(document) != {"name", "on", "permissions", "concurrency", "jobs"}:
+        raise BoundaryError("kernel publisher workflow top-level field allowlist is not exact")
+    if document.get("name") != "hf-space-deploy":
+        raise BoundaryError("kernel publisher workflow identity is not exact")
+    if _mapping(document.get("on"), "kernel publisher workflow trigger") != {
+        "push": {"branches": ["main"]}
+    }:
+        raise BoundaryError("kernel publisher workflow trigger is not exact")
+    if _mapping(
+        document.get("concurrency"), "kernel publisher workflow concurrency"
+    ) != {
+        "group": "hf-space-deploy-${{ github.repository }}-production",
+        "cancel-in-progress": False,
+    }:
+        raise BoundaryError("kernel publisher workflow concurrency is not fail-closed")
+    if _permissions(
+        document.get("permissions"), "kernel publisher top-level"
+    ) != STATIC_TOP_PERMISSIONS:
+        raise BoundaryError("kernel publisher top-level permissions are not exact")
+
+    jobs = _mapping(document.get("jobs"), "kernel publisher workflow jobs")
+    expected_job_keys = {
+        "authorize": {
+            "name",
+            "if",
+            "permissions",
+            "runs-on",
+            "timeout-minutes",
+            "outputs",
+            "steps",
+        },
+        "deploy": {
+            "name",
+            "if",
+            "needs",
+            "permissions",
+            "runs-on",
+            "timeout-minutes",
+            "outputs",
+            "steps",
+        },
+        "measure": {
+            "name",
+            "if",
+            "needs",
+            "permissions",
+            "runs-on",
+            "timeout-minutes",
+            "outputs",
+            "steps",
+        },
+        "attest": {
+            "name",
+            "if",
+            "needs",
+            "permissions",
+            "runs-on",
+            "timeout-minutes",
+            "outputs",
+            "env",
+            "steps",
+        },
+        "attest-timeout-fallback": {
+            "name",
+            "if",
+            "needs",
+            "permissions",
+            "runs-on",
+            "timeout-minutes",
+            "env",
+            "steps",
+        },
+    }
+    if set(jobs) != set(expected_job_keys) or any(
+        not isinstance(job, dict) for job in jobs.values()
+    ):
+        raise BoundaryError("kernel publisher workflow job allowlist is not exact")
+
+    expected_profiles = {
+        "authorize": {
+            "name": "authorize-exact-governed-merge",
+            "if": "github.ref == 'refs/heads/main'",
+            "needs": None,
+            "timeout-minutes": 15,
+            "permissions": STATIC_AUTHORIZATION_PERMISSIONS,
+        },
+        "deploy": {
+            "name": "publish-exact-protected-main",
+            "if": "needs.authorize.result == 'success'",
+            "needs": "authorize",
+            "timeout-minutes": 20,
+            "permissions": STATIC_PUBLISHER_PERMISSIONS,
+        },
+        "measure": {
+            "name": "measure-and-reauthorize-publication",
+            "if": (
+                "always() && needs.authorize.result == 'success' "
+                "&& needs.deploy.result == 'success'"
+            ),
+            "needs": ["authorize", "deploy"],
+            "timeout-minutes": 35,
+            "permissions": STATIC_AUTHORIZATION_PERMISSIONS,
+        },
+        "attest": {
+            "name": "attest-terminal-publication-evidence",
+            "if": "always() && needs.authorize.result == 'success'",
+            "needs": ["authorize", "deploy", "measure"],
+            "timeout-minutes": 25,
+            "permissions": STATIC_ATTESTATION_PERMISSIONS,
+        },
+        "attest-timeout-fallback": {
+            "name": "preserve-attestation-timeout-evidence",
+            "if": (
+                "always() && needs.authorize.result == 'success' && "
+                "needs.attest.outputs.terminal_evidence_completed != 'true'"
+            ),
+            "needs": ["authorize", "deploy", "measure", "attest"],
+            "timeout-minutes": 10,
+            "permissions": STATIC_PUBLISHER_PERMISSIONS,
+        },
+    }
+    for job_id, job in jobs.items():
+        profile = expected_profiles[job_id]
+        if set(job) != expected_job_keys[job_id]:
+            raise BoundaryError(
+                f"kernel publisher workflow job fields are not exact: {job_id}"
+            )
+        if (
+            job.get("name") != profile["name"]
+            or job.get("if") != profile["if"]
+            or job.get("runs-on") != "ubuntu-latest"
+            or job.get("timeout-minutes") != profile["timeout-minutes"]
+            or (job.get("needs") if "needs" in job else None) != profile["needs"]
+        ):
+            raise BoundaryError(
+                f"kernel publisher workflow job execution profile is not exact: {job_id}"
+            )
+        if _permissions(
+            job.get("permissions"), f"kernel publisher job {job_id}"
+        ) != profile["permissions"]:
+            raise BoundaryError(
+                f"kernel publisher workflow job permissions are not exact: {job_id}"
+            )
+        if not _steps(job, f"kernel publisher job {job_id}"):
+            raise BoundaryError(f"kernel publisher workflow job has no steps: {job_id}")
+
+    kernel_checkout = "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+    kernel_setup_python = (
+        "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+    )
+    kernel_setup_node = "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+    kernel_download = (
+        "actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e"
+    )
+    kernel_upload = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+    canonical_steps = {
+        "authorize": [
+            "Checkout exact protected-main event",
+            kernel_setup_python,
+            kernel_setup_node,
+            "Bind exact source revision",
+            "Verify zero-dependency kernel contracts",
+            "Build exact source-bound bundle",
+            "Mint canonical governed-merge authorization",
+            "Fetch pinned build-provenance wrapper before mutation",
+            "Fetch pinned bounded attestation runtime before mutation",
+            "Fetch pinned bounded artifact runtime before mutation",
+            "Stage and seal immutable authorized input",
+            "Upload immutable authorized publisher input",
+        ],
+        "deploy": [
+            kernel_setup_python,
+            kernel_setup_node,
+            "Download immutable authorized publisher input",
+            "Verify sealed authorized input before code or dependency use",
+            "Create isolated hash-closed HF publisher",
+            "Record bounded publisher evidence deadline",
+            "Publish authorized bundle without GitHub or OIDC credentials",
+            "Preserve publisher outcome primary",
+            "Preserve publisher outcome retry",
+            "Classify publisher artifact preservation",
+        ],
+        "measure": [
+            kernel_setup_python,
+            kernel_setup_node,
+            kernel_download,
+            "Verify sealed authorized input before artifact code execution",
+            "Download preserved publisher outcome",
+            "Record bounded measurement evidence deadline",
+            "Measure public bytes and reauthorize exact main",
+            "Validate exact failed-deployment receipt",
+            "Preserve measurement outcome primary",
+            "Preserve measurement outcome retry",
+            "Classify measurement artifact preservation",
+        ],
+        "attest": [
+            kernel_setup_python,
+            kernel_setup_node,
+            kernel_download,
+            "Verify sealed authorized input before artifact code execution",
+            "Download publisher outcome",
+            "Download measurement outcome",
+            "Record bounded attestation evidence deadline",
+            "Synthesize canonical success receipt candidate",
+            "Attest canonical final success receipt bytes",
+            "Promote attested receipt and bind metadata envelope",
+            "Preserve terminal success evidence primary",
+            "Preserve terminal success evidence retry",
+            "Classify terminal success artifact",
+            "Synthesize terminal failure evidence",
+            "Preserve terminal failure evidence primary",
+            "Preserve terminal failure evidence retry",
+            "Enforce terminal publication evidence",
+            "Record terminal evidence completion",
+        ],
+        "attest-timeout-fallback": [
+            kernel_setup_python,
+            kernel_setup_node,
+            "Download sealed authorized input",
+            "Verify sealed authorized input before fallback code execution",
+            "Download publisher outcome for timeout evidence",
+            "Download measurement outcome for timeout evidence",
+            "Record bounded timeout-evidence deadline",
+            "Revalidate canonical candidate after attestation timeout",
+            "Synthesize attestation-timeout failure evidence",
+            "Preserve attestation-timeout evidence primary",
+            "Preserve attestation-timeout evidence retry",
+            "Enforce attestation-timeout evidence preservation",
+        ],
+    }
+
+    def step_identity(step: dict) -> str:
+        value = step.get("name", step.get("uses"))
+        if not isinstance(value, str) or not value:
+            raise BoundaryError("kernel publisher step identity is malformed")
+        return value
+
+    for job_id, expected in canonical_steps.items():
+        steps = _steps(jobs[job_id], f"kernel publisher job {job_id}")
+        if [step_identity(step) for step in steps] != expected:
+            raise BoundaryError(
+                f"kernel publisher canonical steps are not exact: {job_id}"
+            )
+        for step in steps:
+            has_uses = "uses" in step
+            has_run = "run" in step
+            if has_uses == has_run:
+                raise BoundaryError(
+                    f"kernel publisher step action/command shape is not exact: "
+                    f"{job_id}/{step_identity(step)}"
+                )
+            if has_run and (
+                step.get("shell") != "bash"
+                or not _logical_shell_commands(
+                    step.get("run"),
+                    f"kernel publisher step {job_id}/{step_identity(step)}",
+                )
+            ):
+                raise BoundaryError(
+                    f"kernel publisher shell command is not exact: "
+                    f"{job_id}/{step_identity(step)}"
+                )
+
+    oidc_blank = {
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "",
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "",
+    }
+    runtime_blank = {
+        **oidc_blank,
+        "ACTIONS_RUNTIME_TOKEN": "",
+        "ACTIONS_RUNTIME_URL": "",
+        "ACTIONS_RESULTS_URL": "",
+        "ACTIONS_CACHE_URL": "",
+    }
+    authorized_input = {
+        "name": "${{ needs.authorize.outputs.artifact_name }}",
+        "path": "${{ runner.temp }}/kernel-authorized-input",
+    }
+    publisher_outcome = {
+        "pattern": (
+            "kernel-publisher-outcome-*-${{ needs.authorize.outputs.source_sha }}-"
+            "${{ github.run_id }}-${{ github.run_attempt }}"
+        ),
+        "path": "${{ runner.temp }}/kernel-publisher-outcome",
+        "merge-multiple": True,
+    }
+    measurement_outcome = {
+        "pattern": (
+            "kernel-measurement-outcome-*-${{ needs.authorize.outputs.source_sha }}-"
+            "${{ github.run_id }}-${{ github.run_attempt }}"
+        ),
+        "path": "${{ runner.temp }}/kernel-measurement-outcome",
+        "merge-multiple": True,
+    }
+
+    def action(
+        uses: str,
+        inputs: dict,
+        *,
+        name: str | None = None,
+        env: dict | None = None,
+        extra: dict | None = None,
+    ) -> dict:
+        value: dict = {"uses": uses, "with": inputs}
+        if name is not None:
+            value["name"] = name
+        if env is not None:
+            value["env"] = env
+        if extra:
+            value.update(extra)
+        return value
+
+    expected_actions = {
+        ("authorize", "Checkout exact protected-main event"): action(
+            kernel_checkout,
+            {
+                "ref": "${{ github.sha }}",
+                "persist-credentials": False,
+                "fetch-depth": 0,
+            },
+            name="Checkout exact protected-main event",
+        ),
+        ("authorize", kernel_setup_python): action(
+            kernel_setup_python, {"python-version": "3.12.13"}
+        ),
+        ("authorize", kernel_setup_node): action(
+            kernel_setup_node, {"node-version": "24.19.0"}
+        ),
+        (
+            "authorize",
+            "Fetch pinned build-provenance wrapper before mutation",
+        ): action(
+            kernel_checkout,
+            {
+                "repository": "actions/attest-build-provenance",
+                "ref": "a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32",
+                "path": ".authorized-actions/attest-build-provenance",
+                "persist-credentials": False,
+                "fetch-depth": 1,
+            },
+            name="Fetch pinned build-provenance wrapper before mutation",
+        ),
+        ("authorize", "Fetch pinned bounded attestation runtime before mutation"): action(
+            kernel_checkout,
+            {
+                "repository": "actions/attest",
+                "ref": "59d89421af93a897026c735860bf21b6eb4f7b26",
+                "path": ".authorized-actions/attest",
+                "persist-credentials": False,
+                "fetch-depth": 1,
+            },
+            name="Fetch pinned bounded attestation runtime before mutation",
+        ),
+        ("authorize", "Fetch pinned bounded artifact runtime before mutation"): action(
+            kernel_checkout,
+            {
+                "repository": "actions/upload-artifact",
+                "ref": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+                "path": ".authorized-actions/upload-artifact",
+                "persist-credentials": False,
+                "fetch-depth": 1,
+            },
+            name="Fetch pinned bounded artifact runtime before mutation",
+        ),
+        ("authorize", "Upload immutable authorized publisher input"): action(
+            kernel_upload,
+            {
+                "name": "${{ steps.seal-input.outputs.artifact_name }}",
+                "path": "${{ runner.temp }}/kernel-authorized-input",
+                "if-no-files-found": "error",
+                "include-hidden-files": False,
+                "retention-days": 7,
+            },
+            name="Upload immutable authorized publisher input",
+            extra={"id": "authorized-input-upload"},
+        ),
+        ("deploy", kernel_setup_python): action(
+            kernel_setup_python, {"python-version": "3.12.13"}
+        ),
+        ("deploy", kernel_setup_node): action(
+            kernel_setup_node, {"node-version": "24.19.0"}
+        ),
+        ("deploy", "Download immutable authorized publisher input"): action(
+            kernel_download,
+            authorized_input,
+            name="Download immutable authorized publisher input",
+        ),
+        ("measure", kernel_setup_python): action(
+            kernel_setup_python, {"python-version": "3.12.13"}
+        ),
+        ("measure", kernel_setup_node): action(
+            kernel_setup_node, {"node-version": "24.19.0"}
+        ),
+        ("measure", kernel_download): action(kernel_download, authorized_input),
+        ("measure", "Download preserved publisher outcome"): action(
+            kernel_download,
+            publisher_outcome,
+            name="Download preserved publisher outcome",
+            extra={"continue-on-error": True},
+        ),
+        ("attest", kernel_setup_python): action(
+            kernel_setup_python,
+            {"python-version": "3.12.13"},
+            env=oidc_blank,
+        ),
+        ("attest", kernel_setup_node): action(
+            kernel_setup_node, {"node-version": "24.19.0"}, env=oidc_blank
+        ),
+        ("attest", kernel_download): action(
+            kernel_download, authorized_input, env=oidc_blank
+        ),
+        ("attest", "Download publisher outcome"): action(
+            kernel_download,
+            publisher_outcome,
+            name="Download publisher outcome",
+            env=oidc_blank,
+            extra={"continue-on-error": True},
+        ),
+        ("attest", "Download measurement outcome"): action(
+            kernel_download,
+            measurement_outcome,
+            name="Download measurement outcome",
+            env=oidc_blank,
+            extra={"continue-on-error": True},
+        ),
+        ("attest", "Attest canonical final success receipt bytes"): action(
+            ATTEST_PROVENANCE,
+            {
+                "subject-path": (
+                    "${{ runner.temp }}/kernel-terminal-candidate/"
+                    "hf-canonical-success-receipt.json"
+                )
+            },
+            name="Attest canonical final success receipt bytes",
+            extra={
+                "id": "oidc-receipt",
+                "if": "steps.candidate-receipt.outcome == 'success'",
+                "continue-on-error": True,
+            },
+        ),
+        ("attest-timeout-fallback", kernel_setup_python): action(
+            kernel_setup_python,
+            {"python-version": "3.12.13", "token": ""},
+            env=runtime_blank,
+        ),
+        ("attest-timeout-fallback", kernel_setup_node): action(
+            kernel_setup_node,
+            {"node-version": "24.19.0", "token": ""},
+            env=runtime_blank,
+        ),
+        ("attest-timeout-fallback", "Download sealed authorized input"): action(
+            kernel_download,
+            authorized_input,
+            name="Download sealed authorized input",
+            env=oidc_blank,
+        ),
+        (
+            "attest-timeout-fallback",
+            "Download publisher outcome for timeout evidence",
+        ): action(
+            kernel_download,
+            publisher_outcome,
+            name="Download publisher outcome for timeout evidence",
+            env=oidc_blank,
+            extra={"continue-on-error": True},
+        ),
+        (
+            "attest-timeout-fallback",
+            "Download measurement outcome for timeout evidence",
+        ): action(
+            kernel_download,
+            measurement_outcome,
+            name="Download measurement outcome for timeout evidence",
+            env=oidc_blank,
+            extra={"continue-on-error": True},
+        ),
+    }
+    observed_actions = {
+        (job_id, step_identity(step)): step
+        for job_id, job in jobs.items()
+        for step in _steps(job, f"kernel publisher job {job_id}")
+        if "uses" in step
+    }
+    if observed_actions != expected_actions:
+        raise BoundaryError("kernel publisher action bindings are not exact")
+
+    secret_values = [
+        value
+        for _path, value in _walk_scalars(document)
+        if isinstance(value, str) and re.search(r"(?i)\bsecrets\b", value)
+    ]
+    if secret_values != [HF_SECRET]:
+        raise BoundaryError("kernel HF secret consumption is not exactly isolated")
+    github_token_values = [
+        value
+        for _path, value in _walk_scalars(document)
+        if isinstance(value, str)
+        and re.search(r"(?i)\bgithub\s*\.\s*token\b", value)
+    ]
+    if github_token_values != [NATIVE_GOVERNANCE_TOKEN, NATIVE_GOVERNANCE_TOKEN]:
+        raise BoundaryError("kernel GitHub token consumption is not exactly isolated")
+    for path, value in _walk_scalars(document):
+        if path and path[-1] == "secrets":
+            raise BoundaryError("kernel publisher inherits or passes a secrets mapping")
+        if path and path[-1] == "HF_TOKEN" and value not in {"", HF_SECRET}:
+            raise BoundaryError("kernel HF_TOKEN materialization is not exact")
+        if isinstance(value, str) and (
+            re.search(r"(?i)\bgithub\s*\[", value)
+            or re.search(r"(?i)\b(?:tojson|fromjson)\s*\(\s*github\s*\)", value)
+        ):
+            raise BoundaryError("kernel GitHub credential expression is not exact")
+
+    guard = _named_step(jobs["authorize"], "Mint canonical governed-merge authorization")
+    if guard.get("env") != {
+        "GITHUB_TOKEN": NATIVE_GOVERNANCE_TOKEN,
+        "HF_TOKEN": "",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "",
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "",
+        "ACTIONS_RUNTIME_TOKEN": "",
+        "ACTIONS_RUNTIME_URL": "",
+        "ACTIONS_RESULTS_URL": "",
+        "ACTIONS_CACHE_URL": "",
+    } or _logical_shell_commands(guard.get("run"), "kernel authorization") != [
+        "set -euo pipefail",
+        (
+            "python -I -P scripts/deploy_hf_space.py guard "
+            '--source-sha "$GITHUB_SHA" --event "$GITHUB_EVENT_PATH" '
+            '--output "$RUNNER_TEMP/governed-merge.json" '
+            '--failure-output "$RUNNER_TEMP/governed-merge-failure.json"'
+        ),
+    ]:
+        raise BoundaryError("kernel authorization command or credential boundary is not exact")
+
+    mutation = _named_step(
+        jobs["deploy"], "Publish authorized bundle without GitHub or OIDC credentials"
+    )
+    if mutation.get("env") != {
+        "GITHUB_TOKEN": "",
+        "GH_TOKEN": "",
+        "GOVERNANCE_TOKEN": "",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "",
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "",
+        "ACTIONS_RUNTIME_TOKEN": "",
+        "ACTIONS_RUNTIME_URL": "",
+        "ACTIONS_RESULTS_URL": "",
+        "ACTIONS_CACHE_URL": "",
+        "HF_TOKEN": HF_SECRET,
+    }:
+        raise BoundaryError("kernel publisher mutation credential boundary is not exact")
+    mutation_commands = _logical_shell_commands(
+        mutation.get("run"), "kernel publisher mutation"
+    )
+    if mutation_commands[:3] != [
+        "set -euo pipefail",
+        'input="$RUNNER_TEMP/kernel-authorized-input"',
+        'test -n "$HF_TOKEN"',
+    ] or len(mutation_commands) != 4 or _command_tokens(
+        mutation_commands[3], "kernel publisher mutation"
+    ) != [
+        "$RUNNER_TEMP/hf-publisher-venv/bin/python",
+        "-I",
+        "-P",
+        "$input/scripts/deploy_hf_space.py",
+        "publish",
+        "--bundle",
+        "$input/bundle",
+        "--source-sha",
+        "${{ needs.authorize.outputs.source_sha }}",
+        "--authorization",
+        "$input/governed-merge.json",
+        "--authorized-input-root",
+        "$input",
+        "--authorized-input-manifest-sha256",
+        "${{ needs.authorize.outputs.input_manifest_sha256 }}",
+        "--result",
+        "$RUNNER_TEMP/hf-deploy-result.json",
+        "--failure-evidence",
+        "$RUNNER_TEMP/hf-deploy-failure.json",
+    ]:
+        raise BoundaryError("kernel publisher mutation command is not exact and mandatory")
+
+    measurement = _named_step(
+        jobs["measure"], "Measure public bytes and reauthorize exact main"
+    )
+    if measurement.get("env") != {
+        "GITHUB_TOKEN": NATIVE_GOVERNANCE_TOKEN,
+        "GH_TOKEN": "",
+        "GOVERNANCE_TOKEN": "",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "",
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "",
+        "ACTIONS_RUNTIME_TOKEN": "",
+        "ACTIONS_RUNTIME_URL": "",
+        "ACTIONS_RESULTS_URL": "",
+        "ACTIONS_CACHE_URL": "",
+        "HF_TOKEN": "",
+    }:
+        raise BoundaryError("kernel measurement credential boundary is not exact")
+    measurement_commands = _logical_shell_commands(
+        measurement.get("run"), "kernel measurement"
+    )
+    expected_measurement = [
+        "python",
+        "-I",
+        "-P",
+        "$input/scripts/deploy_hf_space.py",
+        "measure",
+        "--bundle",
+        "$input/bundle",
+        "--source-sha",
+        "${{ needs.authorize.outputs.source_sha }}",
+        "--authorization",
+        "$input/governed-merge.json",
+        "--authorized-input-root",
+        "$input",
+        "--authorized-input-manifest-sha256",
+        "${{ needs.authorize.outputs.input_manifest_sha256 }}",
+        "--event",
+        "$input/push-event.json",
+        "--authorization-output",
+        "$RUNNER_TEMP/governed-merge-post.json",
+        "--authorization-failure-output",
+        "$RUNNER_TEMP/governed-merge-post-failure.json",
+        "--result",
+        "$RUNNER_TEMP/kernel-publisher-outcome/hf-deploy-result.json",
+        "--measurement",
+        "$RUNNER_TEMP/hf-live-attestation.json",
+    ]
+    if measurement_commands[:2] != [
+        "set -euo pipefail",
+        'input="$RUNNER_TEMP/kernel-authorized-input"',
+    ] or len(measurement_commands) != 3 or _command_tokens(
+        measurement_commands[2], "kernel measurement"
+    ) != expected_measurement:
+        raise BoundaryError("kernel measurement command is not exact and mandatory")
+
+    if _mapping(jobs["attest"].get("outputs"), "kernel attestation outputs") != {
+        "terminal_evidence_completed": (
+            "${{ steps.terminal-evidence-completion.outputs.complete }}"
+        )
+    }:
+        raise BoundaryError("kernel attestation completion output is not exact")
+    expected_blank_environment = {"GITHUB_TOKEN": "", "GH_TOKEN": "", "HF_TOKEN": ""}
+    for job_id in ("attest", "attest-timeout-fallback"):
+        if _mapping(
+            jobs[job_id].get("env"), f"kernel publisher job {job_id} environment"
+        ) != expected_blank_environment:
+            raise BoundaryError(
+                f"kernel publisher workflow job environment is not exact: {job_id}"
+            )
+
+    canonical_document = _workflow_document(_canonical_kernel_workflow())
+    canonical_jobs = _mapping(
+        canonical_document.get("jobs"), "canonical kernel publisher workflow jobs"
+    )
+    observed_run_steps = {
+        (job_id, step_identity(step)): step
+        for job_id, job in jobs.items()
+        for step in _steps(job, f"kernel publisher job {job_id}")
+        if "run" in step
+    }
+    canonical_run_steps = {
+        (job_id, step_identity(step)): step
+        for job_id, job in canonical_jobs.items()
+        for step in _steps(job, f"canonical kernel publisher job {job_id}")
+        if "run" in step
+    }
+    if observed_run_steps != canonical_run_steps:
+        raise BoundaryError(
+            "kernel publisher run-step fields, conditions, environment, and commands "
+            "are not exact"
+        )
+    if document != canonical_document:
+        raise BoundaryError(
+            "kernel publisher workflow differs from the exact canonical contract"
+        )
+
+
+def _publisher_contract(repository: str, entry: dict, blobs: dict[str, bytes]) -> None:
+    contract = entry["publisher_contract"]
+    try:
+        workflow = blobs[contract["publisher_workflow"]].decode("utf-8")
+        publisher = blobs[contract["publisher_script"]].decode("utf-8")
+        lock = blobs[contract["dependency_lock"]].decode("utf-8")
+    except UnicodeError as error:
+        raise BoundaryError("workflow or protected runtime is not UTF-8") from error
+    uses = ANY_USES.findall(workflow)
+    if not uses or any(value.startswith("./") or PINNED_USES.fullmatch(value) is None for value in uses):
+        raise BoundaryError("publisher workflow contains an unpinned or local action")
+    if any(marker in workflow for marker in LEGACY_GOVERNANCE_CREDENTIAL_MARKERS):
+        raise BoundaryError("publisher workflow retains a legacy privileged governance credential")
+    if "secrets: inherit" in workflow:
+        raise BoundaryError("publisher workflow expands permissions or inherits secrets")
+    if repository == "szl-holdings/szl-kernels-live":
+        _kernel_workflow_governance_contract(workflow)
+    else:
+        _workflow_governance_contract(
+            workflow,
+            publisher_input_retention_days=(
+                30 if repository == "szl-holdings/energy-attest-holo" else 1
+            ),
+        )
+    if contract["isolated_invocation"] not in workflow:
+        raise BoundaryError("publisher invocation is not isolated from repository modules")
+    for marker in contract["required_workflow_markers"]:
+        if marker not in workflow:
+            raise BoundaryError(f"publisher workflow marker is missing: {marker}")
+    for marker in contract["required_publisher_markers"]:
+        if marker not in publisher:
+            raise BoundaryError(f"publisher runtime marker is missing: {marker}")
+    lines = [line.strip() for line in lock.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    packages = set()
+    for line in lines:
+        match = re.fullmatch(r"([A-Za-z0-9_.-]+)==([^\s]+)(?:\s+--hash=sha256:[0-9a-f]{64})+", line)
+        if not match or match.group(1).lower() in packages:
+            raise BoundaryError("dependency lock is not exact, hashed, and duplicate-free")
+        packages.add(match.group(1).lower())
+    if len(packages) != 23 or "huggingface_hub" not in packages:
+        raise BoundaryError("publisher dependency lock is not the reviewed 23-package closure")
+    try:
+        module = ast.parse(publisher)
+    except SyntaxError as error:
+        raise BoundaryError("publisher script is malformed") from error
+    allowed = set(sys.stdlib_module_names) | {"huggingface_hub", "__future__"}
+    imported = set()
+    for node in ast.walk(module):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+    if imported - allowed:
+        raise BoundaryError(f"publisher imports repository or unapproved modules: {sorted(imported - allowed)}")
+    _identities(repository, contract, blobs)
+
+
+def verify_candidate(api: GitHubAPI, repository: str, head_sha: str, entry: dict) -> dict:
+    if entry["state"] != "ACTIVE":
+        raise BoundaryError(f"release boundary is PENDING and cannot authorize {repository}")
+    entries = _tree(api, repository, head_sha)
+    expected_workflows = set(entry["workflow_files"])
+    actual_workflows = {path for path, row in entries.items() if row.get("type") == "blob" and path.startswith(".github/workflows/")}
+    if actual_workflows != expected_workflows:
+        raise BoundaryError(f"workflow path set differs: expected={sorted(expected_workflows)} actual={sorted(actual_workflows)}")
+    closure = set(entry["secret_execution_files"])
+    for root in entry["publisher_contract"]["protected_execution_roots"]:
+        actual_root = {path for path, row in entries.items() if row.get("type") == "blob" and path.startswith(root + "/")}
+        expected_root = {path for path in closure if path.startswith(root + "/")}
+        if actual_root != expected_root:
+            raise BoundaryError(f"protected execution path set differs under {root}")
+    required = expected_workflows | closure | set(entry["mutable_public_assets"])
+    if required - set(entries):
+        raise BoundaryError(f"required candidate paths are missing: {sorted(required - set(entries))}")
+    blobs = {}
+    for path in sorted(expected_workflows | closure):
+        row = entries[path]
+        if row.get("type") != "blob" or row.get("mode") not in REGULAR_MODES:
+            raise BoundaryError(f"protected path is not a regular blob: {path}")
+        data = _blob(api, repository, row)
+        expected = entry["workflow_files"].get(path, entry["secret_execution_files"].get(path))
+        if hashlib.sha256(data).hexdigest() != expected:
+            raise BoundaryError(f"protected blob digest differs: {path}")
+        blobs[path] = data
+    for path in entry["mutable_public_assets"]:
+        row = entries[path]
+        if row.get("type") != "blob" or row.get("mode") not in REGULAR_MODES:
+            raise BoundaryError(f"mutable public asset is not a regular blob: {path}")
+    _publisher_contract(repository, entry, blobs)
+    return {"status": "AUTHORIZED_FOR_MERGE", "repository": repository, "repository_id": entry["repository_id"], "candidate_sha": head_sha, "manifest_evidence_sha": entry["observed_candidate_sha"], "workflow_files": sorted(expected_workflows), "secret_execution_files": sorted(closure), "publication_proved": False}
+
+
+def enforce(manifest: dict, event: dict, api: GitHubAPI) -> dict:
+    repository = os.environ.get("EVENT_REPOSITORY", "")
+    try:
+        repository_id = int(os.environ.get("EVENT_REPOSITORY_ID", ""))
+    except ValueError as error:
+        raise BoundaryError("EVENT_REPOSITORY_ID is malformed") from error
+    if repository not in TARGET_IDS or TARGET_IDS[repository] != repository_id:
+        raise BoundaryError("event repository is outside the exact allowlist")
+    entry = manifest["targets"][repository]
+    if entry["state"] != "ACTIVE":
+        raise BoundaryError(f"release boundary is PENDING and cannot authorize {repository}")
+    _repository_identity(api, repository, repository_id)
+    head_sha, binding = _event_binding(api, event, repository, repository_id)
+    if _exact_sha(os.environ.get("EVENT_HEAD_SHA"), "EVENT_HEAD_SHA") != head_sha:
+        raise BoundaryError("workflow expression and authoritative event head differ")
+    result = verify_candidate(api, repository, head_sha, entry)
+    if binding[0] == "pull_request":
+        current = api.get(f"/repos/{repository}/pulls/{binding[1]}")
+        if _pull_binding(current, repository, repository_id, int(binding[1])) != (
+            binding[2], binding[3], binding[4]
+        ):
+            raise BoundaryError("pull request metadata drifted after candidate verification")
+    elif _ref_sha(api, repository, str(binding[1])) != binding[2] or _ref_sha(api, repository, str(binding[3])) != binding[4]:
+        raise BoundaryError("merge-group refs drifted after candidate verification")
+    result["event"] = binding[0]
+    return result
+
+
+def verify_manifest_target(manifest: dict, repository: str, head_sha: str, api: GitHubAPI) -> dict:
+    if repository not in TARGET_IDS:
+        raise BoundaryError("verification target is outside the exact allowlist")
+    entry = manifest["targets"][repository]
+    if entry["state"] != "ACTIVE" or entry["observed_candidate_sha"] != head_sha:
+        raise BoundaryError("verification SHA is not the active manifest evidence SHA")
+    _repository_identity(api, repository, entry["repository_id"])
+    result = verify_candidate(api, repository, head_sha, entry)
+    result["status"] = "MANIFEST_TARGET_VERIFIED"
+    return result
+
+
+def verify_all_active(
+    manifest: dict, api: GitHubAPI, *, allow_explicit_pending: bool = False
+) -> dict:
+    active = [
+        (repository, entry)
+        for repository, entry in sorted(manifest["targets"].items())
+        if entry["state"] == "ACTIVE"
+    ]
+    pending = sorted(
+        repository
+        for repository, entry in manifest["targets"].items()
+        if entry["state"] == "PENDING"
+    )
+    if not active:
+        if allow_explicit_pending:
+            return {
+                "status": "MANIFEST_INCOMPLETE_PENDING_TARGETS",
+                "targets": [],
+                "pending_targets": pending,
+                "authorization_complete": False,
+            }
+        raise BoundaryError("no ACTIVE manifest targets exist; final heads are not authorized")
+    return {
+        "status": (
+            "MANIFEST_INCOMPLETE_PENDING_TARGETS"
+            if pending
+            else "ALL_ACTIVE_MANIFEST_TARGETS_VERIFIED"
+        ),
+        "targets": [
+            verify_manifest_target(manifest, repository, entry["observed_candidate_sha"], api)
+            for repository, entry in active
+        ],
+        "pending_targets": pending,
+        "authorization_complete": not pending,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--event", type=Path)
+    parser.add_argument("--validate-manifest-only", action="store_true")
+    parser.add_argument("--verify-target")
+    parser.add_argument("--head-sha")
+    parser.add_argument("--verify-all-active", action="store_true")
+    parser.add_argument("--allow-explicit-pending", action="store_true")
+    args = parser.parse_args()
+    modes = sum((bool(args.event), args.validate_manifest_only, bool(args.verify_target), args.verify_all_active))
+    if modes != 1 or (args.allow_explicit_pending and not args.verify_all_active):
+        raise BoundaryError("select exactly one enforcement, manifest, or target verification mode")
+    manifest = load_manifest(args.manifest)
+    exit_code = 0
+    if args.validate_manifest_only:
+        result = {"status": "MANIFEST_STRUCTURALLY_VALID", "active_targets": sorted(name for name, value in manifest["targets"].items() if value["state"] == "ACTIVE"), "pending_targets": sorted(name for name, value in manifest["targets"].items() if value["state"] == "PENDING")}
+    else:
+        api = GitHubAPI(os.environ.get("GITHUB_TOKEN", ""))
+        if args.verify_target:
+            result = verify_manifest_target(manifest, args.verify_target, _exact_sha(args.head_sha, "verification head"), api)
+        elif args.verify_all_active:
+            result = verify_all_active(manifest, api, allow_explicit_pending=args.allow_explicit_pending)
+            if not result["authorization_complete"] and not args.allow_explicit_pending:
+                exit_code = 1
+        else:
+            try:
+                event = json.loads(args.event.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError) as error:
+                raise BoundaryError("event payload is unavailable or malformed") from error
+            if not isinstance(event, dict):
+                raise BoundaryError("event payload must be an object")
+            result = enforce(manifest, event, api)
+    print(json.dumps(result, sort_keys=True))
+    return exit_code
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as error:
+        print(f"FAIL-CLOSED: {type(error).__name__}: {error}", file=sys.stderr)
+        raise SystemExit(1)
+

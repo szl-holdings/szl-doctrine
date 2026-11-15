@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+# Zenodo (InvenioRDM) DOI - always resolves to the latest version of this archive
+doi: 10.5281/zenodo.24240282
+message: "If you use this work, please cite it as below."
+type: software
+title: "SZL Holdings — szl-doctrine"
+date-released: "2026-06-03"
+license: Apache-2.0
+repository-code: "https://github.com/szl-holdings/szl-doctrine"
+url: "https://szlholdings.ai"
+abstract: >
+  SZL Holdings — Doctrine v11 (749/14/163, kernel c7c0ba17, Λ = Conjecture 1). SLSA L1 honest.
+authors:
+  - name: "SZL Holdings"
+    website: "https://szlholdings.ai"

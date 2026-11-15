@@ -1,0 +1,182 @@
+name: External release boundary
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: release-boundary-${{ github.repository_id }}-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  release-boundary:
+    name: Release boundary enforcement
+    if: github.event_name == 'pull_request' && github.repository != 'szl-holdings/szl-doctrine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: Checkout exact protected doctrine source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: szl-holdings/szl-doctrine
+          ref: ${{ github.workflow_sha }}
+          path: .release-boundary-doctrine
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/release-boundary/manifest.json
+            .github/release-boundary/fixtures/hf-kernel-space.yml
+            .github/requirements/release-boundary.lock
+            .github/scripts/release_boundary.py
+      - name: Set up exact Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12.13"
+      - name: Install exact structural YAML parser
+        working-directory: .release-boundary-doctrine
+        env:
+          BOUNDARY_VENV: ${{ runner.temp }}/release-boundary-venv
+        run: |
+          set -euo pipefail
+          test ! -e "$BOUNDARY_VENV"
+          python -I -m venv "$BOUNDARY_VENV"
+          BOUNDARY_PYTHON="$BOUNDARY_VENV/bin/python"
+          "$BOUNDARY_PYTHON" -I -m pip install --disable-pip-version-check \
+            --require-hashes --only-binary=:all: --ignore-installed \
+            -r .github/requirements/release-boundary.lock
+          "$BOUNDARY_PYTHON" -I -c \
+            'import importlib.metadata as m, yaml; assert m.version("PyYAML") == "6.0.3" == yaml.__version__'
+          echo "BOUNDARY_PYTHON=$BOUNDARY_PYTHON" >> "$GITHUB_ENV"
+      - name: Enforce candidate without checkout or execution
+        working-directory: .release-boundary-doctrine
+        env:
+          DOCTRINE_SHA: ${{ github.workflow_sha }}
+          EVENT_REPOSITORY: ${{ github.repository }}
+          EVENT_REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DOCTRINE_SHA"
+          "$BOUNDARY_PYTHON" -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --event "$GITHUB_EVENT_PATH"
+
+  release-boundary-merge-group:
+    name: Release boundary merge-group continuation
+    if: github.event_name == 'merge_group' && github.repository != 'szl-holdings/szl-doctrine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: Checkout exact protected doctrine source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: szl-holdings/szl-doctrine
+          ref: ${{ github.workflow_sha }}
+          path: .release-boundary-doctrine
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/release-boundary/manifest.json
+            .github/release-boundary/fixtures/hf-kernel-space.yml
+            .github/requirements/release-boundary.lock
+            .github/scripts/release_boundary.py
+      - name: Set up exact Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12.13"
+      - name: Install exact structural YAML parser
+        working-directory: .release-boundary-doctrine
+        env:
+          BOUNDARY_VENV: ${{ runner.temp }}/release-boundary-venv
+        run: |
+          set -euo pipefail
+          test ! -e "$BOUNDARY_VENV"
+          python -I -m venv "$BOUNDARY_VENV"
+          BOUNDARY_PYTHON="$BOUNDARY_VENV/bin/python"
+          "$BOUNDARY_PYTHON" -I -m pip install --disable-pip-version-check \
+            --require-hashes --only-binary=:all: --ignore-installed \
+            -r .github/requirements/release-boundary.lock
+          "$BOUNDARY_PYTHON" -I -c \
+            'import importlib.metadata as m, yaml; assert m.version("PyYAML") == "6.0.3" == yaml.__version__'
+          echo "BOUNDARY_PYTHON=$BOUNDARY_PYTHON" >> "$GITHUB_ENV"
+      - name: Enforce merge-group candidate without checkout or execution
+        working-directory: .release-boundary-doctrine
+        env:
+          DOCTRINE_SHA: ${{ github.workflow_sha }}
+          EVENT_REPOSITORY: ${{ github.repository }}
+          EVENT_REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DOCTRINE_SHA"
+          "$BOUNDARY_PYTHON" -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --event "$GITHUB_EVENT_PATH"
+
+  source-contracts:
+    name: Release boundary source contracts
+    if: github.event_name == 'pull_request' && github.repository == 'szl-holdings/szl-doctrine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: Checkout exact doctrine candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up exact Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12.13"
+      - name: Install exact structural YAML parser
+        env:
+          BOUNDARY_VENV: ${{ runner.temp }}/release-boundary-venv
+        run: |
+          set -euo pipefail
+          test ! -e "$BOUNDARY_VENV"
+          python -I -m venv "$BOUNDARY_VENV"
+          BOUNDARY_PYTHON="$BOUNDARY_VENV/bin/python"
+          "$BOUNDARY_PYTHON" -I -m pip install --disable-pip-version-check \
+            --require-hashes --only-binary=:all: --ignore-installed \
+            -r .github/requirements/release-boundary.lock
+          "$BOUNDARY_PYTHON" -I -c \
+            'import importlib.metadata as m, yaml; assert m.version("PyYAML") == "6.0.3" == yaml.__version__'
+          echo "BOUNDARY_PYTHON=$BOUNDARY_PYTHON" >> "$GITHUB_ENV"
+      - name: Test doctrine-owned boundary only
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          "$BOUNDARY_PYTHON" -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --validate-manifest-only
+          "$BOUNDARY_PYTHON" -I .github/scripts/test_release_boundary.py -v
+          "$BOUNDARY_PYTHON" -I .github/scripts/test_release_boundary_json.py -v
+          "$BOUNDARY_PYTHON" -I .github/scripts/release_boundary.py \
+            --manifest .github/release-boundary/manifest.json \
+            --verify-all-active \
+            --allow-explicit-pending
